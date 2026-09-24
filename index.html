@@ -1,0 +1,3079 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RT-MPCIS | Real-Time Metro Passenger Crowd Information System</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+  <style>
+    /* ══════════════════════════════════════════
+       THEME VARIABLES
+    ══════════════════════════════════════════ */
+    :root[data-theme="dark"] {
+      --bg: #04090f;
+      --card: #080f1a;
+      --panel: #060c17;
+      --sidebar: #04080e;
+      --border: #0f2035;
+      --border2: rgba(0,200,255,0.18);
+      --accent: #00c8ff;
+      --accent2: #0077bb;
+      --accent3: #00ff9d;
+      --text: #9fc8e8;
+      --text-dim: #3a6080;
+      --text-bright: #e8f4ff;
+      --green: #00ff9d;
+      --yellow: #ffce00;
+      --red: #ff3355;
+      --orange: #ff8c00;
+      --grid: rgba(0,180,255,0.03);
+      --glow: 0 0 12px rgba(0,200,255,0.7);
+      --glow-green: 0 0 10px rgba(0,255,157,0.7);
+      --card-bg: linear-gradient(135deg, #080f1a 0%, #050c16 100%);
+      --map-tile: dark_all;
+      --status-bg: #030710;
+      --input-bg: #04090f;
+      --shadow: 0 0 60px rgba(0,0,0,0.9);
+      --header-shadow: 0 2px 20px rgba(0,0,0,0.8), 0 0 1px rgba(0,200,255,0.3);
+      --metric-bg: rgba(0,200,255,0.05);
+      --panel-glass: rgba(6,12,23,0.96);
+      --scan-line: rgba(0,200,255,0.015);
+    }
+    :root[data-theme="light"] {
+      --bg: #e8eff8;
+      --card: #f4f8fd;
+      --panel: #edf3fa;
+      --sidebar: #e0e9f5;
+      --border: #c0d4ea;
+      --border2: rgba(0,100,180,0.25);
+      --accent: #0070c0;
+      --accent2: #005090;
+      --accent3: #009966;
+      --text: #1a3050;
+      --text-dim: #607090;
+      --text-bright: #0a1828;
+      --green: #00a860;
+      --yellow: #cc8800;
+      --red: #cc2244;
+      --orange: #cc6600;
+      --grid: rgba(0,100,180,0.04);
+      --glow: 0 0 8px rgba(0,100,180,0.3);
+      --glow-green: 0 0 8px rgba(0,168,96,0.3);
+      --card-bg: linear-gradient(135deg, #f4f8fd, #edf3fa);
+      --map-tile: light_all;
+      --status-bg: #d8e4f0;
+      --input-bg: #f8fcff;
+      --shadow: 0 4px 24px rgba(0,60,120,0.12);
+      --header-shadow: 0 2px 12px rgba(0,60,120,0.15);
+      --metric-bg: rgba(0,100,180,0.06);
+      --panel-glass: rgba(232,239,248,0.97);
+      --scan-line: transparent;
+    }
+
+    *{box-sizing:border-box;margin:0;padding:0;}
+
+    body{
+      font-family:'Exo 2',sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      height:100vh;
+      overflow:hidden;
+      transition:background 0.4s,color 0.4s;
+    }
+
+    /* Scan-line overlay */
+    body::before{
+      content:'';
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      background-image:
+        repeating-linear-gradient(0deg,transparent,transparent 1px,var(--scan-line) 1px,var(--scan-line) 2px),
+        repeating-linear-gradient(90deg,transparent,transparent 60px,var(--grid) 60px,var(--grid) 61px);
+    }
+
+    /* ══════════════════════════════════════════
+       LOADER
+    ══════════════════════════════════════════ */
+    #loading{
+      position:fixed;inset:0;
+      background:#04090f;
+      display:flex;justify-content:center;align-items:center;
+      z-index:9999;flex-direction:column;gap:0;
+    }
+    .loader-inner{text-align:center;position:relative;}
+    .loader-hex{
+      width:100px;height:100px;margin:0 auto 28px;position:relative;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .loader-hex::before{
+      content:'';position:absolute;inset:0;border:2px solid rgba(0,200,255,0.2);
+      border-radius:50%;animation:hexSpin 3s linear infinite;
+    }
+    .loader-hex::after{
+      content:'';position:absolute;inset:10px;border:1px solid rgba(0,255,157,0.3);
+      border-radius:50%;animation:hexSpin 2s linear infinite reverse;
+    }
+    @keyframes hexSpin{to{transform:rotate(360deg)}}
+    .loader-hex span{font-size:36px;z-index:1;filter:drop-shadow(0 0 10px #00c8ff);}
+    .loader-title{
+      font-family:'Orbitron',sans-serif;font-size:32px;font-weight:800;
+      letter-spacing:8px;color:#00c8ff;text-shadow:0 0 30px #00c8ff;
+      margin-bottom:6px;
+    }
+    .loader-sub{
+      font-family:'Share Tech Mono',monospace;font-size:11px;color:#3a6080;
+      letter-spacing:3px;margin-bottom:24px;
+    }
+    .loader-track{width:280px;height:3px;background:#0f2035;margin:0 auto 12px;border-radius:4px;overflow:hidden;}
+    .loader-fill{height:100%;background:linear-gradient(90deg,#00c8ff,#00ff9d);border-radius:4px;animation:loaderFill 2s ease-out forwards;}
+    @keyframes loaderFill{from{width:0}to{width:100%}}
+    #loader-text{
+      font-family:'Share Tech Mono',monospace;font-size:11px;color:#3a6080;
+      letter-spacing:2px;animation:blinkText 1s infinite;
+    }
+    @keyframes blinkText{50%{opacity:0.3}}
+
+    /* ══════════════════════════════════════════
+       LOGIN
+    ══════════════════════════════════════════ */
+   #login-screen{
+
+      display:none;
+      position:fixed;
+      inset:0;
+      z-index:1000;
+
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+
+      background:radial-gradient(
+        ellipse at 30% 40%,
+        rgba(0,40,80,0.9) 0%,
+        #04090f 65%
+      );
+
+      overflow:hidden;
+}
+    .login-bg-grid{
+      position:absolute;inset:0;
+      background-image:
+        linear-gradient(rgba(0,200,255,0.04) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(0,200,255,0.04) 1px,transparent 1px);
+      background-size:50px 50px;
+    }
+    .login-glow{
+      position:absolute;width:600px;height:600px;border-radius:50%;
+      background:radial-gradient(circle,rgba(0,200,255,0.06) 0%,transparent 60%);
+      top:50%;left:50%;transform:translate(-50%,-50%);
+      animation:breathe 4s ease-in-out infinite;
+    }
+    @keyframes breathe{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:0.6}50%{transform:translate(-50%,-50%) scale(1.2);opacity:1}}
+    .login-box{
+      position:relative;z-index:2;
+      background:linear-gradient(160deg,rgba(10,20,35,0.97),rgba(5,10,20,0.99));
+      border:1px solid #0f2035;
+      border-top:2px solid #00c8ff;
+      border-radius:2px;padding:44px 44px 38px;width:440px;
+      box-shadow:0 0 80px rgba(0,200,255,0.1),inset 0 0 40px rgba(0,0,0,0.4);
+    }
+    .corner-mark{position:absolute;width:12px;height:12px;border-color:#00c8ff;border-style:solid;}
+    .corner-mark.tl{top:-1px;left:-1px;border-width:2px 0 0 2px}
+    .corner-mark.tr{top:-1px;right:-1px;border-width:2px 2px 0 0}
+    .corner-mark.bl{bottom:-1px;left:-1px;border-width:0 0 2px 2px}
+    .corner-mark.br{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+    .login-logo{text-align:center;margin-bottom:32px;}
+    .login-logo .system-name{
+      font-family:'Orbitron',sans-serif;font-size:28px;font-weight:800;
+      letter-spacing:5px;color:#00c8ff;text-shadow:0 0 24px rgba(0,200,255,0.6);
+    }
+    .login-logo .system-sub{
+      font-family:'Share Tech Mono',monospace;font-size:10px;
+      color:#3a6080;letter-spacing:2px;margin-top:6px;
+    }
+    .login-divider{
+      width:40px;height:1px;background:linear-gradient(90deg,transparent,#00c8ff,transparent);
+      margin:12px auto 0;
+    }
+    .tab-row{display:flex;margin-bottom:28px;border-bottom:1px solid #0f2035;}
+    .tab-btn{
+      flex:1;padding:10px;background:none;border:none;
+      font-family:'Orbitron',sans-serif;font-size:11px;font-weight:600;
+      letter-spacing:2px;text-transform:uppercase;color:#3a6080;
+      cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;margin-bottom:-1px;
+    }
+    .tab-btn.active{color:#00c8ff;border-bottom-color:#00c8ff;}
+    .form-label{
+      font-size:10px;font-weight:600;letter-spacing:2px;color:#3a6080;
+      text-transform:uppercase;margin-bottom:6px;display:block;
+      font-family:'Share Tech Mono',monospace;
+    }
+    .form-input{
+      width:100%;background:#03070e;border:1px solid #0f2035;border-radius:2px;
+      color:#9fc8e8;font-family:'Share Tech Mono',monospace;font-size:13px;
+      padding:10px 14px;margin-bottom:20px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;
+    }
+    .form-input:focus{border-color:#00c8ff;box-shadow:0 0 12px rgba(0,200,255,0.2);}
+    .login-btn{
+      width:100%;padding:12px;background:transparent;border:1px solid #00c8ff;
+      color:#00c8ff;font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;
+      letter-spacing:3px;text-transform:uppercase;cursor:pointer;border-radius:2px;
+      transition:all 0.25s;position:relative;overflow:hidden;
+    }
+    .login-btn::before{content:'';position:absolute;inset:0;background:#00c8ff;transform:translateX(-100%);transition:transform 0.25s;z-index:-1;}
+    .login-btn:hover{color:#04090f;}
+    .login-btn:hover::before{transform:translateX(0);}
+    .login-err{font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff3355;text-align:center;margin-top:12px;min-height:18px;letter-spacing:1px;}
+    .login-hint{font-size:10px;color:#3a6080;text-align:center;margin-top:16px;font-family:'Share Tech Mono',monospace;}
+    .login-hint span{color:#00c8ff;}
+
+    /* ══════════════════════════════════════════
+       APP LAYOUT
+    ══════════════════════════════════════════ */
+    #app{display:none;flex-direction:column;height:100vh;width:100%;position:relative;z-index:1;animation:fadeIn 0.5s ease;overflow:hidden;}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+    /* ── HEADER ── */
+    header{
+      height:46px;
+      background:var(--panel);
+      border-bottom:1px solid rgba(0,200,255,0.12);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 14px;flex-shrink:0;
+      box-shadow:var(--header-shadow);
+      position:relative;z-index:100;
+    }
+    header::after{
+      content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(0,200,255,0.4),transparent);
+    }
+    .header-left{display:flex;align-items:center;gap:10px;}
+    .logo-badge{
+      display:flex;align-items:center;gap:8px;
+      border-right:1px solid rgba(0,200,255,0.1);padding-right:14px;
+    }
+    .logo-icon{font-size:16px;filter:drop-shadow(0 0 6px #00c8ff);}
+    .logo-text{
+      font-family:'Orbitron',sans-serif;font-size:15px;font-weight:800;
+      letter-spacing:3px;color:var(--accent);text-shadow:var(--glow);
+    }
+    .logo-sub{font-size:8px;color:var(--text-dim);letter-spacing:1.5px;margin-top:1px;}
+    .active-line-badge{
+      display:flex;align-items:center;gap:8px;
+      background:rgba(0,200,255,0.05);border:1px solid rgba(0,200,255,0.15);
+      border-radius:2px;padding:4px 12px;
+    }
+    .active-line-badge label{color:var(--text-dim);font-size:8px;letter-spacing:2px;text-transform:uppercase;font-family:'Share Tech Mono',monospace;}
+    .active-line-badge select{
+      background:transparent;border:none;color:var(--text-bright);
+      font-family:'Orbitron',sans-serif;font-size:11px;font-weight:600;
+      outline:none;cursor:pointer;letter-spacing:1px;
+    }
+    .active-line-badge select option{background:var(--card);color:var(--text);}
+    #active-line-dot{margin-right:2px;}
+    .header-right{display:flex;align-items:center;gap:8px;}
+    .emergency-btn{
+      background:rgba(255,51,85,0.1);border:1px solid rgba(255,51,85,0.4);
+      color:#ff3355;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;
+      letter-spacing:1px;padding:5px 12px;border-radius:2px;cursor:pointer;
+      transition:all 0.2s;display:flex;align-items:center;gap:5px;
+    }
+    .emergency-btn:hover{background:rgba(255,51,85,0.22);}
+    .emergency-btn.active{background:#ff3355;color:white;animation:emergencyPulse 0.5s infinite;}
+    @keyframes emergencyPulse{50%{opacity:0.5}}
+    .header-sep{width:1px;height:24px;background:rgba(0,200,255,0.1);}
+    .clock-block{text-align:right;font-family:'Share Tech Mono',monospace;}
+    .clock-time{font-size:18px;color:var(--accent);text-shadow:var(--glow);letter-spacing:2px;line-height:1;}
+    .clock-date{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-top:1px;}
+    .status-online{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--green);font-family:'Share Tech Mono',monospace;}
+    .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:var(--glow-green);animation:blink 2s infinite;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+    .theme-toggle{
+      background:var(--metric-bg);border:1px solid var(--border2);
+      color:var(--text);font-size:14px;width:30px;height:30px;
+      border-radius:2px;cursor:pointer;display:flex;align-items:center;
+      justify-content:center;transition:all 0.3s;
+    }
+    .theme-toggle:hover{border-color:var(--accent);}
+    .logout-btn{
+      background:none;border:1px solid var(--border);color:var(--text-dim);
+      font-size:9px;padding:4px 10px;border-radius:2px;cursor:pointer;
+      font-family:'Share Tech Mono',monospace;letter-spacing:1.5px;transition:all 0.2s;
+    }
+    .logout-btn:hover{border-color:var(--red);color:var(--red);}
+    #lang-select{
+      background:var(--metric-bg);border:1px solid var(--border2);
+      color:var(--text);padding:4px 6px;border-radius:2px;font-size:10px;
+      font-family:'Share Tech Mono',monospace;outline:none;
+    }
+
+    /* ── MAIN GRID ── */
+    #main-container{
+      display:grid;
+      grid-template-columns:220px 1fr 320px;
+      height:calc(100vh - 46px - 22px);
+      overflow:hidden;
+    }
+
+    /* ══════════════════════════════════════════
+       SIDEBAR
+    ══════════════════════════════════════════ */
+    .sidebar{
+      width:220px;
+      background:var(--sidebar);
+      border-right:1px solid rgba(0,200,255,0.1);
+      display:flex;flex-direction:column;
+      overflow:hidden;
+      position:relative;z-index:20;
+      flex-shrink:0;
+    }
+    .sidebar::after{
+      content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
+      background:linear-gradient(180deg,transparent,rgba(0,200,255,0.3),transparent);
+      pointer-events:none;
+    }
+
+    /* Sidebar Header */
+    .sidebar-top{
+      padding:14px 16px 12px;
+      border-bottom:1px solid rgba(0,200,255,0.08);
+      flex-shrink:0;
+    }
+    .metro-logo-wrap{display:flex;align-items:center;gap:10px;}
+    .metro-logo{
+      width:36px;height:36px;border-radius:8px;
+      background:linear-gradient(135deg,rgba(0,200,255,0.2),rgba(0,255,157,0.1));
+      border:1px solid rgba(0,200,255,0.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:18px;flex-shrink:0;
+      box-shadow:0 0 14px rgba(0,200,255,0.2);
+    }
+    .metro-title{
+      font-family:'Orbitron',sans-serif;font-size:14px;font-weight:800;
+      color:var(--text-bright);letter-spacing:1px;line-height:1.2;
+    }
+    .metro-subtitle{font-size:8px;color:var(--text-dim);letter-spacing:1.5px;margin-top:2px;}
+
+    /* Live Badge */
+    .sidebar-live-badge{
+      display:flex;align-items:center;gap:8px;margin-top:10px;
+      padding:6px 10px;border-radius:2px;
+      background:rgba(0,255,157,0.06);border:1px solid rgba(0,255,157,0.15);
+      color:var(--green);font-size:9px;font-weight:700;letter-spacing:2px;
+      font-family:'Share Tech Mono',monospace;width:fit-content;
+    }
+    .live-dot{
+      width:7px;height:7px;border-radius:50%;background:var(--green);
+      box-shadow:0 0 8px var(--green);animation:livePulse 1.5s infinite;
+    }
+    @keyframes livePulse{0%,100%{transform:scale(1);opacity:0.7}50%{transform:scale(1.3);opacity:1}}
+
+    /* User panel */
+    .sidebar-user-panel{
+      padding:10px 14px 10px;
+      border-bottom:1px solid rgba(0,200,255,0.08);
+      display:flex;align-items:center;gap:10px;flex-shrink:0;
+    }
+    .user-avatar{
+      width:36px;height:36px;border-radius:8px;flex-shrink:0;
+      background:linear-gradient(135deg,rgba(0,200,255,0.15),rgba(0,255,157,0.08));
+      border:1px solid rgba(0,200,255,0.2);
+      display:flex;align-items:center;justify-content:center;font-size:16px;
+    }
+    .user-role{font-size:8px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;font-family:'Share Tech Mono',monospace;}
+    .user-name{font-size:13px;color:var(--text-bright);font-weight:600;margin-top:2px;}
+
+    /* Nav */
+    .sidebar-nav{padding:10px 12px;flex:1;overflow-y:auto;}
+    .sidebar-nav::-webkit-scrollbar{width:2px;}
+    .sidebar-nav::-webkit-scrollbar-thumb{background:var(--border2);border-radius:1px;}
+    .sidebar-section-title{
+      font-size:8px;font-weight:700;letter-spacing:2.5px;
+      color:var(--text-dim);text-transform:uppercase;
+      padding:8px 6px 5px;font-family:'Share Tech Mono',monospace;
+    }
+    .nav-item{
+      display:flex;align-items:center;gap:10px;padding:8px 10px;
+      border-radius:3px;cursor:pointer;font-size:12px;color:var(--text);
+      font-weight:500;transition:all 0.2s;position:relative;
+      border:1px solid transparent;margin-bottom:2px;
+      letter-spacing:0.3px;
+    }
+    .nav-item::before{
+      content:'';position:absolute;left:0;top:20%;bottom:20%;
+      width:2px;background:var(--accent);border-radius:2px;
+      transform:scaleY(0);transition:transform 0.2s;
+    }
+    .nav-item:hover{
+      background:rgba(0,200,255,0.06);
+      color:var(--text-bright);
+      padding-left:14px;
+    }
+    .nav-item.active{
+      background:rgba(0,200,255,0.1);
+      border-color:rgba(0,200,255,0.2);
+      color:var(--accent);font-weight:600;
+    }
+    .nav-item.active::before{transform:scaleY(1);}
+    .nav-icon{font-size:13px;width:20px;text-align:center;flex-shrink:0;}
+    .nav-badge{
+      margin-left:auto;background:rgba(255,51,85,0.2);
+      border:1px solid rgba(255,51,85,0.4);color:#ff3355;
+      font-size:9px;padding:1px 6px;border-radius:2px;
+      font-family:'Share Tech Mono',monospace;
+    }
+    .nav-badge.green{background:rgba(0,255,157,0.1);border-color:rgba(0,255,157,0.3);color:var(--green);}
+
+    /* Sidebar Quick Stats */
+    .sidebar-quick-stats{
+      padding:10px 14px;border-top:1px solid rgba(0,200,255,0.08);
+      flex-shrink:0;
+    }
+    .qs-title{
+      font-size:8px;font-weight:700;letter-spacing:2px;
+      color:var(--text-dim);text-transform:uppercase;
+      font-family:'Share Tech Mono',monospace;margin-bottom:8px;
+    }
+    .qs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+    .qs-card{
+      background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.1);
+      border-radius:3px;padding:8px 10px;
+    }
+    .qs-value{
+      font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;
+      color:var(--text-bright);line-height:1;
+    }
+    .qs-value.accent{color:var(--accent);}
+    .qs-value.green{color:var(--green);}
+    .qs-value.yellow{color:var(--yellow);}
+    .qs-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-top:3px;font-family:'Share Tech Mono',monospace;}
+    .qs-delta{font-size:9px;margin-top:2px;}
+    .qs-delta.up{color:var(--green);}
+    .qs-delta.down{color:var(--red);}
+
+    /* Sidebar metrics */
+    .sidebar-sys-health{
+      padding:8px 14px 12px;border-top:1px solid rgba(0,200,255,0.08);
+      flex-shrink:0;
+    }
+    .ssh-title{font-size:8px;font-weight:700;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;font-family:'Share Tech Mono',monospace;margin-bottom:8px;}
+    .ssh-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+    .ssh-label{font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;width:70px;flex-shrink:0;}
+    .ssh-bar{flex:1;height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;}
+    .ssh-fill{height:100%;border-radius:2px;transition:width 1s;}
+    .ssh-fill.green{background:linear-gradient(90deg,#00a860,#00ff9d);}
+    .ssh-fill.yellow{background:linear-gradient(90deg,#cc8800,#ffce00);}
+    .ssh-fill.cyan{background:linear-gradient(90deg,#0077bb,#00c8ff);}
+    .ssh-val{font-size:9px;color:var(--accent);font-family:'Share Tech Mono',monospace;width:32px;text-align:right;}
+
+    /* Weather widget */
+    .sidebar-weather{
+      padding:8px 14px 12px;border-top:1px solid rgba(0,200,255,0.08);
+      flex-shrink:0;display:flex;align-items:center;gap:10px;
+    }
+    .weather-icon{font-size:24px;}
+    .weather-temp{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:var(--text-bright);}
+    .weather-info{font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;}
+
+    /* Sidebar footer */
+    .sidebar-footer{
+      padding:8px 14px;text-align:center;
+      color:var(--text-dim);font-size:8px;letter-spacing:1px;
+      border-top:1px solid rgba(0,200,255,0.06);
+      font-family:'Share Tech Mono',monospace;flex-shrink:0;
+    }
+
+    /* ══════════════════════════════════════════
+       MAP AREA
+    ══════════════════════════════════════════ */
+.map-wrapper{
+  position:relative;
+  overflow:hidden;
+}
+
+#map{
+  position:absolute;
+  inset:0;
+  width:100% !important;
+  height:100% !important;
+}
+
+    /* Legend overlay */
+    .legend-box{
+      position:absolute;top:10px;right:10px;z-index:1000;
+      background:rgba(4,9,15,0.92);backdrop-filter:blur(10px);
+      border:1px solid rgba(0,200,255,0.2);border-radius:3px;
+      padding:10px 14px;font-family:'Share Tech Mono',monospace;font-size:9px;
+    }
+    .legend-title{color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+    .legend-row{display:flex;align-items:center;gap:8px;margin:3px 0;color:var(--text);}
+    .legend-dot{width:8px;height:8px;border-radius:1px;}
+    .legend-range{color:var(--text-dim);}
+
+    /* Train marker */
+    .train-icon{
+      width:24px;height:24px;border-radius:50%;
+      background:radial-gradient(circle,#00c8ff,#003355);
+      border:2px solid white;
+      box-shadow:0 0 15px #00c8ff,0 0 30px rgba(0,200,255,0.5);
+      animation:pulseTrain 1.5s infinite;
+    }
+    @keyframes pulseTrain{0%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:0.7}100%{transform:scale(1);opacity:1}}
+
+    .emergency-overlay{animation:emergencyBody 0.5s infinite;}
+    @keyframes emergencyBody{50%{filter:brightness(0.8) sepia(0.4) hue-rotate(-5deg)}}
+
+    /* ══════════════════════════════════════════
+       RIGHT PANEL
+    ══════════════════════════════════════════ */
+    .right-panel{
+      background:var(--panel-glass);
+      border-left:1px solid rgba(0,200,255,0.1);
+      overflow-y:auto;
+      display:flex;flex-direction:column;
+      transition:background 0.4s;
+      position:relative;
+    }
+    .right-panel::before{
+      content:'';position:sticky;top:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(0,200,255,0.3),transparent);
+      flex-shrink:0;z-index:10;
+    }
+    .right-panel::-webkit-scrollbar{width:2px;}
+    .right-panel::-webkit-scrollbar-thumb{background:rgba(0,200,255,0.2);border-radius:1px;}
+
+    .rp-section{padding:10px 12px;border-bottom:1px solid rgba(0,200,255,0.07);}
+
+    .sec-title{
+      font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2.5px;
+      color:var(--text-dim);text-transform:uppercase;margin-bottom:8px;
+      display:flex;align-items:center;gap:6px;
+    }
+    .sec-title .sec-dot{
+      width:5px;height:5px;border-radius:50%;
+      background:var(--accent);box-shadow:var(--glow);
+    }
+    .sec-badge{
+      margin-left:auto;font-size:8px;padding:1px 6px;
+      background:rgba(0,200,255,0.1);border:1px solid rgba(0,200,255,0.2);
+      border-radius:2px;color:var(--accent);letter-spacing:1px;
+    }
+
+    /* Chart */
+    #chartWrapper{height:120px;position:relative;}
+    #chart{width:100%;height:100%;}
+    .chart-stats{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px;
+    }
+    .cs-item{
+      background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.08);
+      border-radius:2px;padding:5px 8px;
+    }
+    .cs-val{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:var(--text-bright);line-height:1;}
+    .cs-lbl{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-top:2px;font-family:'Share Tech Mono',monospace;}
+
+    /* AI */
+    .ai-confidence-ring{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+    .ai-ring-wrap{position:relative;width:48px;height:48px;flex-shrink:0;}
+    .ai-ring-wrap svg{transform:rotate(-90deg);}
+    .ai-ring-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:var(--accent);}
+    .ai-label-group{flex:1;}
+    .ai-label{font-size:10px;color:var(--accent);font-weight:700;letter-spacing:1px;font-family:'Share Tech Mono',monospace;}
+    .ai-sublabel{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:2px;font-family:'Share Tech Mono',monospace;}
+    #ai-text{
+      font-family:'Share Tech Mono',monospace;white-space:pre-line;
+      color:var(--text);font-size:10px;line-height:1.7;min-height:50px;
+    }
+
+    /* Train Status */
+    .lts-header{
+      display:flex;align-items:flex-start;justify-content:space-between;
+      margin-bottom:8px;
+    }
+    .lts-line-name{
+      font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;
+      line-height:1;
+    }
+    .lts-direction{font-size:9px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;margin-top:3px;}
+    .lts-station-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+    .lts-station-label{font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:1px;}
+    .lts-station-name{
+      font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;
+      color:var(--accent);margin-top:2px;
+    }
+    .crowd-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .crowd-ring-container{position:relative;width:72px;height:72px;}
+    .crowd-ring-container svg{transform:rotate(-90deg);}
+    .crowd-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+    .crowd-ring-num{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:var(--accent);line-height:1;}
+    .crowd-ring-label{font-size:7px;color:var(--text-dim);letter-spacing:1px;margin-top:1px;font-family:'Share Tech Mono',monospace;}
+    .crowd-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:1.5px;font-family:'Share Tech Mono',monospace;}
+    .crowd-low{background:rgba(0,255,157,0.1);color:var(--green);border:1px solid rgba(0,255,157,0.3);}
+    .crowd-moderate{background:rgba(255,206,0,0.1);color:var(--yellow);border:1px solid rgba(255,206,0,0.3);}
+    .crowd-heavy{background:rgba(255,51,85,0.1);color:var(--red);border:1px solid rgba(255,51,85,0.3);}
+
+    /* Train positions */
+    .train-pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+    .train-pos-card{
+      background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.1);
+      border-radius:3px;padding:8px;position:relative;overflow:hidden;
+    }
+    .train-pos-card::after{
+      content:'';position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,var(--accent),transparent);
+    }
+    .tp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+    .tp-label{font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;letter-spacing:0.5px;}
+    .tp-status-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:var(--glow-green);}
+    .tp-station{font-size:11px;color:var(--text-bright);font-weight:600;font-family:'Orbitron',sans-serif;letter-spacing:0.5px;}
+    .tp-next{font-size:8px;color:var(--accent);margin-top:2px;font-family:'Share Tech Mono',monospace;}
+    .tp-dist{font-size:8px;color:var(--text-dim);margin-top:1px;font-family:'Share Tech Mono',monospace;}
+
+    /* System Metrics */
+    .system-metrics{display:flex;flex-direction:column;gap:5px;}
+    .sm-row{display:flex;align-items:center;gap:6px;}
+    .sm-label{color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:9px;width:80px;flex-shrink:0;}
+    .sm-bar{flex:1;height:3px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;}
+    .sm-fill{height:100%;border-radius:2px;transition:width 0.8s;position:relative;}
+    .sm-fill::after{content:'';position:absolute;top:0;right:0;width:4px;height:100%;background:rgba(255,255,255,0.6);border-radius:2px;}
+    .sm-val{color:var(--accent);font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:600;width:36px;text-align:right;}
+
+    /* Next Train + Delay */
+    .next-delay-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+    .next-card{
+      background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.12);
+      border-radius:3px;padding:10px;
+    }
+    .next-card.delay-card{border-color:rgba(255,51,85,0.2);}
+    .nc-label{font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;font-family:'Share Tech Mono',monospace;margin-bottom:4px;}
+    .nc-station{font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;margin-bottom:6px;}
+    .nc-time{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--accent);line-height:1;}
+    .delay-time{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--red);line-height:1;}
+    .nc-est{font-size:8px;color:var(--text-dim);margin-top:3px;font-family:'Share Tech Mono',monospace;}
+
+    /* Upcoming Departures */
+    .dep-list{display:flex;flex-direction:column;gap:4px;}
+    .dep-item{
+      display:flex;align-items:center;gap:8px;padding:5px 8px;
+      background:rgba(0,200,255,0.03);border:1px solid rgba(0,200,255,0.08);
+      border-radius:2px;
+    }
+    .dep-icon{font-size:12px;}
+    .dep-route{flex:1;font-size:10px;color:var(--text);font-family:'Share Tech Mono',monospace;}
+    .dep-time{font-size:10px;color:var(--accent);font-family:'Orbitron',sans-serif;font-weight:600;}
+    .dep-wait{font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;}
+
+    /* Schedule */
+    .sched-table{width:100%;border-collapse:collapse;}
+    .sched-table th{
+      font-size:8px;color:var(--text-dim);text-transform:uppercase;
+      letter-spacing:2px;padding:4px 6px;text-align:left;
+      border-bottom:1px solid rgba(0,200,255,0.1);
+      font-family:'Share Tech Mono',monospace;
+    }
+    .sched-table td{
+      padding:5px 6px;font-size:10px;
+      border-bottom:1px solid rgba(0,200,255,0.04);
+      font-family:'Share Tech Mono',monospace;color:var(--text);
+    }
+    .sched-table td:last-child{text-align:right;}
+    .now-marker{background:rgba(0,200,255,0.06) !important;}
+    .now-marker td:first-child{color:var(--accent) !important;font-weight:bold;}
+    .crowd-dot-cell{display:inline-block;width:7px;height:7px;border-radius:50%;}
+    .dot-low{background:var(--green);box-shadow:0 0 4px var(--green);}
+    .dot-mod{background:var(--yellow);box-shadow:0 0 4px var(--yellow);}
+    .dot-heavy{background:var(--red);box-shadow:0 0 4px var(--red);}
+
+    /* Active Alerts */
+    .alerts-list{display:flex;flex-direction:column;gap:4px;}
+    .alert-item{
+      display:flex;align-items:flex-start;gap:8px;padding:6px 8px;
+      border-radius:2px;border-left:2px solid;
+    }
+    .alert-item.warn{
+      background:rgba(255,140,0,0.06);border-color:var(--orange);
+    }
+    .alert-item.crit{
+      background:rgba(255,51,85,0.06);border-color:var(--red);
+    }
+    .alert-item.info{
+      background:rgba(0,200,255,0.05);border-color:var(--accent);
+    }
+    .alert-icon{font-size:11px;flex-shrink:0;margin-top:1px;}
+    .alert-text{font-size:9px;color:var(--text);font-family:'Share Tech Mono',monospace;line-height:1.5;}
+    .alert-time{font-size:8px;color:var(--text-dim);margin-top:2px;}
+
+    /* ── STATUS BAR ── */
+    .status-bar{
+      height:22px;background:var(--status-bg);
+      border-top:1px solid rgba(0,200,255,0.1);
+      display:flex;align-items:center;padding:0 14px;gap:0;flex-shrink:0;
+      position:relative;
+    }
+    .status-bar::before{
+      content:'';position:absolute;top:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(0,200,255,0.3),transparent);
+    }
+    .sb-item{
+      font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);
+      letter-spacing:1px;padding:0 12px;border-right:1px solid rgba(0,200,255,0.08);
+      display:flex;align-items:center;gap:4px;height:100%;
+    }
+    .sb-item:first-child{padding-left:0;}
+    .sb-item:last-child{border-right:none;}
+    .sb-item span{color:var(--accent);}
+    .sb-green{color:var(--green) !important;}
+    .sb-pulse{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:var(--glow-green);animation:blink 1.5s infinite;}
+    .sb-spacer{flex:1;}
+    .sb-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+
+    /* Crowd Heatmap Legend */
+    .heatmap-legend{
+      display:flex;align-items:center;gap:6px;margin-top:6px;
+    }
+    .hm-label{font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;}
+    .hm-bar{flex:1;height:4px;border-radius:2px;background:linear-gradient(90deg,#00ff9d,#ffce00,#ff3355);}
+
+    /* Today Metrics */
+    .today-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+    .tm-card{
+      background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.08);
+      border-radius:2px;padding:6px 8px;text-align:center;
+    }
+    .tm-val{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--text-bright);}
+    .tm-lbl{font-size:7px;color:var(--text-dim);letter-spacing:1px;margin-top:2px;font-family:'Share Tech Mono',monospace;}
+
+    /* ── TICKET MODAL ── */
+    #ticket-modal{
+      display:none;position:fixed;inset:0;z-index:2000;
+      background:rgba(2,6,12,0.88);backdrop-filter:blur(8px);
+      align-items:center;justify-content:center;
+    }
+    #ticket-modal[style*="flex"]{display:flex !important;}
+    .tm-box{
+      background:linear-gradient(160deg,#080f1a,#050c16);
+      border:1px solid rgba(0,200,255,0.25);border-top:2px solid #00c8ff;
+      border-radius:4px;width:520px;max-width:95vw;max-height:90vh;
+      overflow-y:auto;box-shadow:0 0 60px rgba(0,200,255,0.15);
+      animation:fadeIn 0.25s ease;
+    }
+    .tm-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 18px;border-bottom:1px solid rgba(0,200,255,0.1);
+    }
+    .tm-title{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:var(--accent);letter-spacing:2px;}
+    .tm-close{background:none;border:1px solid rgba(255,51,85,0.3);color:#ff3355;width:28px;height:28px;border-radius:2px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;}
+    .tm-close:hover{background:rgba(255,51,85,0.15);}
+    .tm-body{padding:18px;}
+    .tm-steps{display:flex;gap:0;margin-bottom:20px;position:relative;}
+    .tm-steps::before{content:'';position:absolute;top:14px;left:14px;right:14px;height:1px;background:rgba(0,200,255,0.15);}
+    .tm-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;position:relative;z-index:1;}
+    .tm-step-num{
+      width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,200,255,0.2);
+      background:var(--card);color:var(--text-dim);display:flex;align-items:center;justify-content:center;
+      font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;transition:all 0.3s;
+    }
+    .tm-step-lbl{font-size:8px;color:var(--text-dim);letter-spacing:1.5px;font-family:'Share Tech Mono',monospace;}
+    .tm-step.active .tm-step-num{background:rgba(0,200,255,0.15);border-color:#00c8ff;color:#00c8ff;box-shadow:0 0 10px rgba(0,200,255,0.4);}
+    .tm-step.active .tm-step-lbl{color:var(--accent);}
+    .tm-step.done .tm-step-num{background:rgba(0,255,157,0.1);border-color:#00ff9d;color:#00ff9d;}
+    .tm-step-panel{display:none;}
+    .tm-step-panel.active{display:block;}
+    .tf-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+    .tf-row.full{grid-template-columns:1fr;}
+    .tf-lbl{font-size:9px;color:var(--text-dim);letter-spacing:2px;font-family:'Share Tech Mono',monospace;text-transform:uppercase;display:block;margin-bottom:5px;}
+    .tf-sel,.tf-inp{
+      width:100%;background:rgba(4,9,15,0.9);border:1px solid rgba(0,200,255,0.15);
+      color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;
+      padding:8px 10px;border-radius:2px;outline:none;transition:border-color 0.2s;
+    }
+    .tf-sel:focus,.tf-inp:focus{border-color:#00c8ff;}
+    .tf-radio-grp{display:flex;gap:8px;flex-wrap:wrap;}
+    .tf-radio{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:2px;border:1px solid rgba(0,200,255,0.12);cursor:pointer;font-size:10px;color:var(--text);font-family:'Share Tech Mono',monospace;transition:all 0.2s;}
+    .tf-radio:has(input:checked){border-color:#00c8ff;background:rgba(0,200,255,0.08);color:#00c8ff;}
+    .tf-radio input{accent-color:#00c8ff;}
+    .tm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid rgba(0,200,255,0.07);}
+    .tm-act-btn{padding:9px 18px;border-radius:2px;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all 0.2s;border:1px solid;}
+    .tm-act-btn.primary{background:rgba(0,200,255,0.1);border-color:rgba(0,200,255,0.4);color:#00c8ff;}
+    .tm-act-btn.primary:hover{background:rgba(0,200,255,0.2);}
+    .tm-act-btn.secondary{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1);color:var(--text-dim);}
+    .tm-act-btn.secondary:hover{border-color:rgba(255,255,255,0.2);color:var(--text);}
+    .tm-act-btn.success{background:rgba(0,255,157,0.08);border-color:rgba(0,255,157,0.3);color:#00ff9d;}
+    .tm-act-btn:disabled{opacity:0.5;cursor:not-allowed;}
+    .fare-preview{background:rgba(0,200,255,0.03);border:1px solid rgba(0,200,255,0.1);border-radius:3px;padding:14px;}
+    .fare-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,200,255,0.05);font-family:'Share Tech Mono',monospace;font-size:10px;}
+    .fare-row:last-child{border-bottom:none;padding-top:10px;}
+    .fare-lbl{color:var(--text-dim);}
+    .fare-val{color:var(--text-bright);font-weight:600;}
+    .fare-row:last-child .fare-val{color:#00ff9d;font-family:'Orbitron',sans-serif;font-size:16px;}
+    .pay-methods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+    .pay-opt{
+      display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;
+      border-radius:3px;border:1px solid rgba(0,200,255,0.12);cursor:pointer;
+      background:rgba(0,200,255,0.03);transition:all 0.2s;
+    }
+    .pay-opt:hover{border-color:rgba(0,200,255,0.3);}
+    .pay-opt.selected{border-color:#00c8ff;background:rgba(0,200,255,0.1);box-shadow:0 0 12px rgba(0,200,255,0.15);}
+    .pay-ico{font-size:24px;}
+    .pay-name{font-size:9px;color:var(--text);font-family:'Share Tech Mono',monospace;letter-spacing:1px;}
+    .pay-opt.selected .pay-name{color:#00c8ff;}
+    .ticket-card{
+      background:linear-gradient(160deg,rgba(0,30,60,0.9),rgba(0,10,25,0.95));
+      border:1px solid rgba(0,200,255,0.3);border-radius:4px;padding:16px;
+      font-family:'Share Tech Mono',monospace;
+    }
+    .tc-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+    .tc-line{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#00c8ff;letter-spacing:2px;}
+    .tc-num{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:3px;}
+    .tc-qr{font-size:36px;}
+    .tc-route{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px dashed rgba(0,200,255,0.15);border-bottom:1px dashed rgba(0,200,255,0.15);margin-bottom:10px;}
+    .tc-from,.tc-to{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--text-bright);}
+    .tc-arrow{flex:1;height:1px;background:linear-gradient(90deg,rgba(0,200,255,0.3),rgba(0,200,255,0.8),rgba(0,200,255,0.3));position:relative;}
+    .tc-arrow::after{content:'▶';position:absolute;right:-4px;top:-6px;color:#00c8ff;font-size:10px;}
+    .tc-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;}
+    .tc-info-item{text-align:center;}
+    .tc-info-item label{font-size:7px;color:var(--text-dim);letter-spacing:2px;display:block;margin-bottom:3px;}
+    .tc-info-item span{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--accent);}
+    .tc-dashed{border-top:1px dashed rgba(0,200,255,0.15);margin:8px 0;}
+    .tc-barcode{display:flex;align-items:flex-end;gap:1px;height:28px;justify-content:center;}
+    .tc-bar{width:2px;background:#00c8ff;border-radius:1px;display:inline-block;}
+
+    /* ── END TICKET MODAL ── */
+      #main-container{grid-template-columns:200px 1fr 280px;}
+    
+    @media(max-width:900px){
+      #main-container{grid-template-columns:0 1fr 260px;}
+      .sidebar{display:none;}
+    }
+
+    @media(max-width:700px){
+      body{overflow:auto;}
+      #main-container{
+        grid-template-columns:1fr;
+        grid-template-rows:auto auto;
+      }
+      .right-panel{
+        max-height:50vh;
+      }
+      .legend-box{
+        right:6px;
+        top:6px;
+        transform:scale(.92);
+        transform-origin:top right;
+      }
+      header{
+        padding:0 8px;
+        gap:6px;
+        flex-wrap:wrap;
+        height:auto;
+        min-height:46px;
+      }
+      .header-right{
+        width:100%;
+        justify-content:flex-end;
+        padding-bottom:6px;
+      }
+      .active-line-badge{
+        max-width:220px;
+      }
+      .active-line-badge select{
+        width:100%;
+      }
+    }
+/* ══════════════════════════════════════════
+   UPGRADED TICKET MODAL — QR + SPINNER
+══════════════════════════════════════════ */
+.tm-processing{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:32px 0;gap:14px;
+}
+.tm-spinner{
+  width:48px;height:48px;border-radius:50%;
+  border:3px solid rgba(0,200,255,0.15);
+  border-top-color:#00c8ff;
+  animation:tmSpin 0.8s linear infinite;
+}
+@keyframes tmSpin{to{transform:rotate(360deg)}}
+.tm-spin-label{
+  font-family:'Share Tech Mono',monospace;font-size:11px;
+  color:var(--accent);letter-spacing:3px;
+  animation:blinkText 1s infinite;
+}
+
+/* QR Code container inside ticket */
+.tc-qr-block{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+}
+.tc-qr-canvas{
+  border:2px solid rgba(0,200,255,0.35);
+  border-radius:3px;
+  padding:4px;
+  background:#fff; /* QR needs white bg for scanability */
+  box-shadow:0 0 12px rgba(0,200,255,0.25);
+}
+.tc-qr-label{
+  font-family:'Share Tech Mono',monospace;
+  font-size:7px;color:var(--text-dim);letter-spacing:2px;
+  text-align:center;
+}
+
+/* Ticket success glow header */
+.tc-success-banner{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:8px;margin-bottom:10px;
+  background:rgba(0,255,157,0.06);
+  border:1px solid rgba(0,255,157,0.2);
+  border-radius:3px;
+}
+.tc-success-banner span:first-child{font-size:18px;}
+.tc-success-banner span:last-child{
+  font-family:'Orbitron',sans-serif;font-size:10px;
+  font-weight:700;color:var(--green);letter-spacing:2px;
+}
+
+/* Download PDF button real styling */
+.tm-act-btn.pdf-btn{
+  background:rgba(0,255,157,0.08);
+  border-color:rgba(0,255,157,0.35);
+  color:#00ff9d;
+}
+.tm-act-btn.pdf-btn:hover{background:rgba(0,255,157,0.18);}
+
+/* ══════════════════════════════════════════
+   TRANSLATION TOAST
+══════════════════════════════════════════ */
+#lang-toast{
+  position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--panel);border:1px solid var(--border2);
+  border-radius:3px;padding:8px 20px;
+  font-family:'Share Tech Mono',monospace;font-size:11px;
+  color:var(--accent);letter-spacing:2px;
+  opacity:0;pointer-events:none;z-index:9998;
+  transition:opacity 0.3s,transform 0.3s;
+  box-shadow:0 0 20px rgba(0,200,255,0.15);
+}
+#lang-toast.visible{
+  opacity:1;transform:translateX(-50%) translateY(0);
+}
+</style>
+</head>
+<body>
+<div id="lang-toast"></div>
+<!-- LOADER -->
+<div id="loading">
+  <div class="loader-inner">
+    <div class="loader-hex"><span>🚇</span></div>
+    <div class="loader-title">RT-MPCIS</div>
+    <div class="loader-sub">REAL-TIME METRO PASSENGER CROWD INFORMATION SYSTEM</div>
+    <div class="loader-track"><div class="loader-fill"></div></div>
+    <div id="loader-text">Initializing sensors...</div>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-bg-grid"></div>
+  <div class="login-glow"></div>
+  <div class="login-box">
+    <div class="corner-mark tl"></div>
+    <div class="corner-mark tr"></div>
+    <div class="corner-mark bl"></div>
+    <div class="corner-mark br"></div>
+    <div class="login-logo">
+      <div class="system-name">RT-MPCIS</div>
+      <div class="system-sub">METRO COMMAND CENTER — HYDERABAD</div>
+      <div class="login-divider"></div>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchTab('login')">LOGIN</button>
+      <button class="tab-btn" onclick="switchTab('register')">REGISTER</button>
+    </div>
+    <div id="tab-login">
+      <label class="form-label">Operator ID / Email</label>
+      <input class="form-input" id="login-email" type="email" placeholder="operator@metro.in" autocomplete="username"/>
+      <label class="form-label">Access Code</label>
+      <input class="form-input" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <button class="login-btn" onclick="doLogin()">ACCESS SYSTEM</button>
+      <div class="login-err" id="login-err"></div>
+      <div class="login-hint">Demo: <span>demo@metro.in</span> / <span>metro123</span></div>
+    </div>
+    <div id="tab-register" style="display:none">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="reg-email" type="email" placeholder="new@metro.in"/>
+      <label class="form-label">Password (min 6 chars)</label>
+      <input class="form-input" id="reg-pass" type="password" placeholder="••••••••"/>
+      <button class="login-btn" onclick="doRegister()">CREATE ACCOUNT</button>
+      <div class="login-err" id="reg-err"></div>
+    </div>
+  </div>
+</div>
+<!-- TICKET MODAL -->
+<div id="ticket-modal">
+  <div class="tm-box">
+    <div class="tm-header">
+      <div class="tm-title" id="ticket-modal-title">🎫 BOOK METRO TICKET</div>
+      <button class="tm-close" onclick="closeTicket()">✕</button>
+    </div>
+    <div class="tm-body">
+      <!-- Steps indicator -->
+      <div class="tm-steps">
+        <div class="tm-step active" id="ts1"><div class="tm-step-num">1</div><div class="tm-step-lbl">JOURNEY</div></div>
+        <div class="tm-step" id="ts2"><div class="tm-step-num">2</div><div class="tm-step-lbl">FARE</div></div>
+        <div class="tm-step" id="ts3"><div class="tm-step-num">3</div><div class="tm-step-lbl">PAYMENT</div></div>
+        <div class="tm-step" id="ts4"><div class="tm-step-num">4</div><div class="tm-step-lbl">TICKET</div></div>
+      </div>
+      <!-- Step 1: Journey -->
+      <div class="tm-step-panel active" id="sp1">
+        <div class="tf-row">
+          <div>
+            <label class="tf-lbl" id="tk-lbl-from">FROM STATION</label>
+            <select class="tf-sel" id="tk-from"></select>
+          </div>
+          <div>
+            <label class="tf-lbl" id="tk-lbl-to">TO STATION</label>
+            <select class="tf-sel" id="tk-to"></select>
+          </div>
+        </div>
+        <div class="tf-row">
+          <div>
+            <label class="tf-lbl" id="tk-lbl-pax">PASSENGERS</label>
+            <select class="tf-sel" id="tk-pax">
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+            </select>
+          </div>
+          <div>
+            <label class="tf-lbl" id="tk-lbl-date">DATE</label>
+            <input class="tf-inp" type="date" id="tk-date"/>
+          </div>
+        </div>
+        <div class="tf-row full">
+          <label class="tf-lbl" id="tk-lbl-type">TICKET TYPE</label>
+          <div class="tf-radio-grp">
+            <div class="tf-radio"><input type="radio" name="tktype" id="tk-single" value="single" checked/><label for="tk-single">🎫 SINGLE</label></div>
+            <div class="tf-radio"><input type="radio" name="tktype" id="tk-return" value="return"/><label for="tk-return">🔄 RETURN</label></div>
+            <div class="tf-radio"><input type="radio" name="tktype" id="tk-day" value="day"/><label for="tk-day">📅 DAY PASS</label></div>
+          </div>
+        </div>
+        <div class="tm-actions">
+          <button class="tm-act-btn primary" onclick="ticketStep(2)">CALCULATE FARE →</button>
+        </div>
+      </div>
+      <!-- Step 2: Fare -->
+      <div class="tm-step-panel" id="sp2">
+        <div class="fare-preview" id="fare-preview"></div>
+        <div class="tm-actions">
+          <button class="tm-act-btn secondary" onclick="ticketStep(1)">← BACK</button>
+          <button class="tm-act-btn primary" onclick="ticketStep(3)">PROCEED TO PAYMENT →</button>
+        </div>
+      </div>
+      <!-- Step 3: Payment -->
+      <div class="tm-step-panel" id="sp3">
+        <div class="pay-methods" id="pay-methods">
+          <div class="pay-opt selected" onclick="selectPay(this,'UPI')"><div class="pay-ico">📱</div><div class="pay-name">UPI</div></div>
+          <div class="pay-opt" onclick="selectPay(this,'CARD')"><div class="pay-ico">💳</div><div class="pay-name">CARD</div></div>
+          <div class="pay-opt" onclick="selectPay(this,'WALLET')"><div class="pay-ico">🪙</div><div class="pay-name">METRO WALLET</div></div>
+        </div>
+        <div id="pay-extra"></div>
+        <div class="tm-actions">
+          <button class="tm-act-btn secondary" onclick="ticketStep(2)">← BACK</button>
+          <button class="tm-act-btn primary" onclick="processPayment()">PAY & CONFIRM ✓</button>
+        </div>
+      </div>
+      <!-- Step 4: Ticket -->
+      <div class="tm-step-panel" id="sp4">
+        <div class="ticket-card" id="ticket-output"></div>
+        <div class="tm-actions">
+          <button class="tm-act-btn success" onclick="downloadTicket()">⬇ DOWNLOAD PDF</button>
+          <button class="tm-act-btn primary" onclick="closeTicket()">DONE ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- APP -->
+<div id="app" style="display:none;">
+<!-- HEADER -->
+  <header>
+    <div class="header-left">
+      <div class="logo-badge">
+        <div class="logo-icon">🚇</div>
+        <div>
+          <div class="logo-text">RT-MPCIS</div>
+          <div class="logo-sub">REAL-TIME METRO PASSENGER CROWD INFORMATION SYSTEM</div>
+        </div>
+      </div>
+      <div class="active-line-badge">
+        <span id="active-line-dot">●</span>
+        <label>ACTIVE LINE</label>
+        <select id="line-select" onchange="changeLine()">
+          <option value="red">Red Line — Miyapur ↔ LB Nagar</option>
+          <option value="blue">Blue Line — Nagole ↔ Raidurg</option>
+          <option value="green">Green Line — JBS ↔ MGBS</option>
+        </select>
+      </div>
+    </div>
+    <div class="header-right">
+      <div id="user-name" style="font-size:10px;color:var(--accent);font-family:'Share Tech Mono',monospace;"></div>
+      <button onclick="openTicket()" style="background:rgba(0,200,255,0.08);border:1px solid rgba(0,200,255,0.35);color:var(--accent);font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:5px 12px;border-radius:2px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(0,200,255,0.18)'" onmouseout="this.style.background='rgba(0,200,255,0.08)'">🎫 BOOK TICKET</button>
+      <select id="lang-select" onchange="setLanguage(this.value)">
+        <option value="en">English</option>
+        <option value="hi">Hindi</option>
+        <option value="te">Telugu</option>
+      </select>
+      <div class="header-sep"></div>
+      <button class="emergency-btn" id="emerg-btn" onclick="toggleEmergency()">⚠ EMERGENCY</button>
+      <div class="header-sep"></div>
+      <div class="clock-block">
+        <div class="clock-time" id="clock-time">00:00:00</div>
+        <div class="clock-date" id="clock-date">Loading...</div>
+      </div>
+      <div class="status-online"><div class="status-dot"></div><span id="live-user">USER</span></div>
+      <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle Light/Dark">☀️</button>
+      <button class="logout-btn" onclick="doLogout()">LOGOUT</button>
+    </div>
+  </header>
+
+  <div id="main-container">
+    <!-- SIDEBAR -->
+    <div class="sidebar metro-sidebar">
+      <div class="sidebar-top">
+        <div class="metro-logo-wrap">
+          <div class="metro-logo">🚇</div>
+          <div>
+            <div class="metro-title">RT-MPCIS</div>
+            <div class="metro-subtitle">METRO OPS CENTER</div>
+          </div>
+        </div>
+        <div class="sidebar-live-badge">
+          <span class="live-dot"></span>
+          LIVE SYSTEM
+        </div>
+      </div>
+
+      <div class="sidebar-user-panel">
+        <div class="user-avatar">👤</div>
+        <div>
+          <div class="user-role">CONTROL OPERATOR</div>
+          <div id="sidebar-user-name" class="user-name">USER</div>
+        </div>
+      </div>
+
+      <div class="sidebar-nav">
+        <div class="sidebar-section-title">OPERATIONS</div>
+        <div class="nav-item active" onclick="setNav(this)" data-i18n="Dashboard">
+          <span class="nav-icon">⬛</span>Dashboard
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Live Tracking">
+          <span class="nav-icon">📡</span>Live Tracking
+          <span class="nav-badge green" id="nb-trains">18</span>
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Station Status">
+          <span class="nav-icon">🚉</span>Station Status
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Schedule">
+          <span class="nav-icon">📅</span>Schedule
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="AI Insights">
+          <span class="nav-icon">🤖</span>AI Insights
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Analytics">
+          <span class="nav-icon">📊</span>Analytics
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Alerts">
+          <span class="nav-icon">🚨</span>Alerts
+          <span class="nav-badge" id="nb-alerts">3</span>
+        </div>
+        <div class="nav-item" onclick="setNav(this)" data-i18n="Settings">
+          <span class="nav-icon">⚙</span>Settings
+        </div>
+
+        <div class="sidebar-section-title" style="margin-top:10px;">SYSTEM</div>
+        <div class="nav-item">
+          <span class="nav-icon">🟢</span><span style="font-size:11px;">All Systems OK</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">📡</span><span style="font-size:11px;">AI Monitoring</span>
+          <span class="nav-badge green">ON</span>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="sidebar-quick-stats">
+        <div class="qs-title">QUICK STATS</div>
+        <div class="qs-grid">
+          <div class="qs-card">
+            <div class="qs-value accent" id="qs-trains">24</div>
+            <div class="qs-label">TOTAL TRAINS</div>
+            <div class="qs-delta up" id="qs-trains-d">↑ 6 active</div>
+          </div>
+          <div class="qs-card">
+            <div class="qs-value green" id="qs-perf">87%</div>
+            <div class="qs-label">ON-TIME PERF</div>
+            <div class="qs-delta up" id="qs-perf-d">↑ +2.1%</div>
+          </div>
+          <div class="qs-card">
+            <div class="qs-value yellow" id="qs-crowd">132</div>
+            <div class="qs-label">AVG CROWD</div>
+            <div class="qs-delta" id="qs-crowd-d" style="color:var(--text-dim)">PAX/COACH</div>
+          </div>
+          <div class="qs-card">
+            <div class="qs-value green" id="qs-health">98%</div>
+            <div class="qs-label">SYS HEALTH</div>
+            <div class="qs-delta up">↑ NOMINAL</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- System Health -->
+      <div class="sidebar-sys-health">
+        <div class="ssh-title">SYSTEM HEALTH</div>
+        <div class="ssh-row">
+          <span class="ssh-label">Network</span>
+          <div class="ssh-bar"><div class="ssh-fill yellow" id="ssh-net" style="width:73%"></div></div>
+          <span class="ssh-val" id="ssh-net-val">73%</span>
+        </div>
+        <div class="ssh-row">
+          <span class="ssh-label">Sensors</span>
+          <div class="ssh-bar"><div class="ssh-fill green" id="ssh-sen" style="width:98%"></div></div>
+          <span class="ssh-val" id="ssh-sen-val">98%</span>
+        </div>
+        <div class="ssh-row">
+          <span class="ssh-label">Accuracy</span>
+          <div class="ssh-bar"><div class="ssh-fill cyan" id="ssh-acc" style="width:96%"></div></div>
+          <span class="ssh-val" id="ssh-acc-val">96%</span>
+        </div>
+      </div>
+
+      <!-- Weather -->
+      <div class="sidebar-weather">
+        <div class="weather-icon">⛅</div>
+        <div>
+          <div class="weather-temp" id="weather-temp">28°C</div>
+          <div class="weather-info" id="weather-info">HYDERABAD · PARTLY CLOUDY</div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">© 2026 RT-MPCIS · HMRL OPERATIONS</div>
+    </div>
+
+    <!-- MAP -->
+    <div class="map-wrapper" style="position:relative;">
+      <div id="map" style="width:100%;height:100%;"></div>
+      <div class="legend-box">
+        <div class="legend-title">CROWD LEVEL LEGEND</div>
+        <div class="legend-row"><div class="legend-dot" style="background:var(--green)"></div>Low <span class="legend-range">0 – 100</span></div>
+        <div class="legend-row"><div class="legend-dot" style="background:var(--yellow)"></div>Moderate <span class="legend-range">101 – 200</span></div>
+        <div class="legend-row"><div class="legend-dot" style="background:var(--red)"></div>Heavy <span class="legend-range">201+</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+
+      <!-- Crowd Flow Chart -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          <span data-i18n="LIVE CROWD FLOW">CROWD FLOW ANALYTICS</span>
+          <span class="sec-badge">TODAY</span>
+        </div>
+        <div id="chartWrapper"><canvas id="chart"></canvas></div>
+        <div class="chart-stats">
+          <div class="cs-item">
+            <div class="cs-val" id="cs-peak">312</div>
+            <div class="cs-lbl">PEAK/COACH</div>
+          </div>
+          <div class="cs-item">
+            <div class="cs-val" id="cs-avg">215</div>
+            <div class="cs-lbl">CROWD NOW</div>
+          </div>
+          <div class="cs-item">
+            <div class="cs-val" id="cs-today">2.4M</div>
+            <div class="cs-lbl">TODAY TOTAL</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Insights -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot" style="background:var(--accent3);box-shadow:var(--glow-green)"></span>
+          <span data-i18n="AI INSIGHTS">AI INSIGHTS</span>
+          <span class="sec-badge" id="ai-conf-badge">89%</span>
+        </div>
+        <div class="ai-confidence-ring">
+          <div class="ai-ring-wrap">
+            <svg width="48" height="48" viewBox="0 0 48 48">
+              <circle cx="24" cy="24" r="19" fill="none" stroke="rgba(0,200,255,0.15)" stroke-width="4"/>
+              <circle id="ai-ring-fill" cx="24" cy="24" r="19" fill="none" stroke="#00c8ff" stroke-width="4"
+                stroke-dasharray="119" stroke-dashoffset="13" stroke-linecap="round" style="transition:all 0.8s;"/>
+            </svg>
+            <div class="ai-ring-center" id="ai-conf-pct">89%</div>
+          </div>
+          <div class="ai-label-group">
+            <div class="ai-label">AI PREDICTION ENGINE</div>
+            <div class="ai-sublabel">CONFIDENCE SCORE</div>
+          </div>
+        </div>
+        <div id="ai-text">Analyzing system...</div>
+      </div>
+
+      <!-- Live Train Status -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          <span data-i18n="LIVE TRAIN STATUS">LIVE TRAIN STATUS</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;">
+          <div>
+            <div class="lts-header">
+              <div>
+                <div class="lts-line-name" id="line-badge-rp">Red Line</div>
+                <div class="lts-direction" id="dir-rp">Eastbound →</div>
+              </div>
+            </div>
+            <div class="lts-station-label">CURRENT STATION</div>
+            <div class="lts-station-name" id="station-name">Locating...</div>
+            <div id="crowd-tag" class="crowd-tag crowd-low" style="margin-top:6px;">
+              <span id="crowd-label">CROWD: LOW</span>
+            </div>
+            <div style="margin-top:5px;font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;">
+              NEXT STATION: <span id="next-station-label" style="color:var(--accent);">LB Nagar</span>
+            </div>
+            <div style="margin-top:2px;font-size:8px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;">
+              DISTANCE: <span id="dist-to-next" style="color:var(--text);">2.4 km</span>
+            </div>
+          </div>
+          <div class="crowd-ring-wrap">
+            <div class="crowd-ring-container">
+              <svg width="72" height="72" viewBox="0 0 72 72">
+                <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"/>
+                <circle id="crowd-ring-fill" cx="36" cy="36" r="28" fill="none" stroke="var(--green)" stroke-width="6"
+                  stroke-dasharray="176" stroke-dashoffset="140" stroke-linecap="round" style="transition:all 0.8s;"/>
+              </svg>
+              <div class="crowd-ring-center">
+                <div class="crowd-ring-num" id="crowd-num">215</div>
+                <div class="crowd-ring-label">PAX/COACH</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Train Positions -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          <span data-i18n="TRAIN POSITIONS">TRAIN POSITIONS</span>
+          <span class="sec-badge" id="train-count-badge">18 ACTIVE</span>
+        </div>
+        <div class="train-pos-grid">
+          <div class="train-pos-card">
+            <div class="tp-header">
+              <div class="tp-label">TRAIN 1</div>
+              <div class="tp-status-dot"></div>
+            </div>
+            <div class="tp-station" id="tp1-station">MGBS</div>
+            <div class="tp-next" id="tp1-next">→ LB Nagar</div>
+            <div class="tp-dist" id="tp1-dist">215 m</div>
+          </div>
+          <div class="train-pos-card">
+            <div class="tp-header">
+              <div class="tp-label">TRAIN 2</div>
+              <div class="tp-status-dot"></div>
+            </div>
+            <div class="tp-station" id="tp2-station">Ameerpet</div>
+            <div class="tp-next" id="tp2-next">→ Kukatpally</div>
+            <div class="tp-dist" id="tp2-dist">1.2 km</div>
+          </div>
+          <div class="train-pos-card">
+            <div class="tp-header">
+              <div class="tp-label">TRAIN 3</div>
+              <div class="tp-status-dot"></div>
+            </div>
+            <div class="tp-station" id="tp3-station">KPHB</div>
+            <div class="tp-next" id="tp3-next">→ Kukatpally</div>
+            <div class="tp-dist" id="tp3-dist">2.1 km</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- System Metrics -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          <span data-i18n="SYSTEM METRICS">SYSTEM METRICS</span>
+        </div>
+        <div class="system-metrics">
+          <div class="sm-row">
+            <span class="sm-label">Network Load</span>
+            <div class="sm-bar"><div class="sm-fill" id="sm-net" style="width:73%;background:linear-gradient(90deg,#cc8800,#ffce00)"></div></div>
+            <span class="sm-val" id="sm-net-v">73%</span>
+          </div>
+          <div class="sm-row">
+            <span class="sm-label">Sensor Status</span>
+            <div class="sm-bar"><div class="sm-fill" id="sm-sen" style="width:98%;background:linear-gradient(90deg,#00a860,#00ff9d)"></div></div>
+            <span class="sm-val" id="sm-sen-v">98%</span>
+          </div>
+          <div class="sm-row">
+            <span class="sm-label">Data Accuracy</span>
+            <div class="sm-bar"><div class="sm-fill" id="sm-acc" style="width:96%;background:linear-gradient(90deg,#0077bb,#00c8ff)"></div></div>
+            <span class="sm-val" id="sm-acc-v">96.2%</span>
+          </div>
+          <div class="sm-row">
+            <span class="sm-label">AI Confidence</span>
+            <div class="sm-bar"><div class="sm-fill" id="sm-ai" style="width:89%;background:linear-gradient(90deg,#007700,#00ff9d)"></div></div>
+            <span class="sm-val" id="sm-ai-v">89%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Next Train + Delay -->
+      <div class="rp-section">
+        <div class="next-delay-grid">
+          <div class="next-card">
+            <div class="nc-label">NEXT TRAIN</div>
+            <div class="nc-station">From <span id="nc-station-name">MGBS</span></div>
+            <div class="nc-time" id="next-dep">--:--</div>
+            <div class="nc-est">Est. Departure</div>
+          </div>
+          <div class="next-card delay-card">
+            <div class="nc-label">DELAY STATUS</div>
+            <div class="nc-station">Estimated Delay</div>
+            <div class="delay-time" id="delay-display">0 min</div>
+            <div class="nc-est">Estimated Delay</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upcoming Departures -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          UPCOMING DEPARTURES
+        </div>
+        <div class="dep-list" id="dep-list"></div>
+      </div>
+
+      <!-- Active Alerts -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot" style="background:var(--orange);box-shadow:0 0 8px var(--orange)"></span>
+          ACTIVE ALERTS
+          <span class="sec-badge" id="alerts-count" style="background:rgba(255,51,85,0.15);border-color:rgba(255,51,85,0.3);color:var(--red);">3</span>
+        </div>
+        <div class="alerts-list" id="alerts-list"></div>
+      </div>
+
+      <!-- Station Schedule -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          <span data-i18n="STATION SCHEDULE">STATION SCHEDULE</span>
+        </div>
+        <table class="sched-table">
+          <thead>
+            <tr>
+              <th>Station</th>
+              <th>Time</th>
+              <th>Crowd</th>
+            </tr>
+          </thead>
+          <tbody id="sched-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Today Metrics -->
+      <div class="rp-section">
+        <div class="sec-title">
+          <span class="sec-dot"></span>
+          TODAY'S METRICS
+        </div>
+        <div class="today-metrics">
+          <div class="tm-card">
+            <div class="tm-val" id="tm-pax">2.45M</div>
+            <div class="tm-lbl">PASSENGERS</div>
+          </div>
+          <div class="tm-card">
+            <div class="tm-val" id="tm-peak">312</div>
+            <div class="tm-lbl">PEAK/COACH</div>
+          </div>
+          <div class="tm-card">
+            <div class="tm-val" id="tm-runs">286</div>
+            <div class="tm-lbl">TRAIN RUNS</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right-panel -->
+  </div><!-- /main-container -->
+
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <div class="sb-item"><span class="sb-pulse"></span> SYSTEM: <span class="sb-green">ONLINE</span></div>
+    <div class="sb-item">LINE: <span id="sb-line">RED</span></div>
+    <div class="sb-item">CROWD: <span id="sb-crowd">LOW</span></div>
+    <div class="sb-item">DELAY: <span id="sb-delay">0 MIN</span></div>
+    <div class="sb-item">TRAINS: <span id="sb-trains">18 ACTIVE</span></div>
+    <div class="sb-item">LAST UPDATE: <span id="sb-update">--</span></div>
+    <div class="sb-spacer"></div>
+    <div class="sb-item">AI ENGINE: <span class="sb-green">ACTIVE</span></div>
+    <div class="sb-item">SENSORS: <span class="sb-green">98% ONLINE</span></div>
+  </div>
+</div><!-- /app -->
+
+
+<script>
+/* ══════════════════════════════════════════
+   TRANSLATIONS
+══════════════════════════════════════════ */
+const translations={
+  en:{"Station":"Station","Crowd":"Crowd","Next station":"Next station","High passenger density detected":"High passenger density detected","Moderate flow":"Moderate flow","Low density":"Low density","Dashboard":"Dashboard","Live Tracking":"Live Tracking","Station Status":"Station Status","Schedule":"Schedule","AI Insights":"AI Insights","Analytics":"Analytics","Alerts":"Alerts","Settings":"Settings","LIVE CROWD FLOW":"CROWD FLOW ANALYTICS","AI INSIGHTS":"AI INSIGHTS","LIVE TRAIN STATUS":"LIVE TRAIN STATUS","TRAIN POSITIONS":"TRAIN POSITIONS","SYSTEM METRICS":"SYSTEM METRICS","STATION SCHEDULE":"STATION SCHEDULE"},
+  hi:{"Station":"स्टेशन","Crowd":"भीड़","Next station":"अगला स्टेशन","High passenger density detected":"अधिक भीड़ पाई गई है","Moderate flow":"मध्यम भीड़","Low density":"कम भीड़","Dashboard":"डैशबोर्ड","Live Tracking":"लाइव ट्रैकिंग","Station Status":"स्टेशन स्थिति","Schedule":"समय सारणी","AI Insights":"AI अंतर्दृष्टि","Analytics":"विश्लेषण","Alerts":"अलर्ट","Settings":"सेटिंग्स","LIVE CROWD FLOW":"लाइव भीड़ प्रवाह","AI INSIGHTS":"AI अंतर्दृष्टि","LIVE TRAIN STATUS":"लाइव ट्रेन स्थिति","TRAIN POSITIONS":"ट्रेन स्थान","SYSTEM METRICS":"सिस्टम मेट्रिक्स","STATION SCHEDULE":"स्टेशन समय सारणी"},
+  te:{"Station":"స్టేషన్","Crowd":"జనం","Next station":"తదుపరి స్టేషన్","High passenger density detected":"అధిక రద్దీ గుర్తించబడింది","Moderate flow":"మధ్యస్థ రద్దీ","Low density":"తక్కువ రద్దీ","Dashboard":"డ్యాష్‌బోర్డ్","Live Tracking":"లైవ్ ట్రాకింగ్","Station Status":"స్టేషన్ స్థితి","Schedule":"షెడ్యూల్","AI Insights":"AI అంతర్దృష్టి","Analytics":"విశ్లేషణ","Alerts":"హెచ్చరికలు","Settings":"సెట్టింగ్‌లు","LIVE CROWD FLOW":"లైవ్ జన ప్రవాహం","AI INSIGHTS":"AI అంతర్దృష్టి","LIVE TRAIN STATUS":"లైవ్ రైలు స్థితి","TRAIN POSITIONS":"రైలు స్థానాలు","SYSTEM METRICS":"సిస్టమ్ మెట్రిక్స్","STATION SCHEDULE":"స్టేషన్ షెడ్యూల్"}
+};
+function translate(t){const d=translations[userLang]||translations.en;return d[t]||t;}
+function applyTranslation(){document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=translate(el.getAttribute('data-i18n'));});}
+
+/* ══════════════════════════════════════════
+   GLOBALS — all declared before any use
+══════════════════════════════════════════ */
+var currentUser=null;
+var clockInterval=null;
+var simInterval=null;
+var userLang='en';
+var appIntervals=new Set();
+var appInitialized=false;
+var isDark=true;
+var chartInstance=null;
+var chartLabels=[];
+var chartData=[];
+var currentMarkers=[];
+var lineLayer=null;
+var trainMarkers=[];
+var heatLayer=null;
+var lastCrowd=0;
+var smoothIntervalHandle=null;
+var lastStationSpoken='';
+var typeTimer=null;
+var emergencyOn=false;
+var map=null;
+var selectedPayMethod='UPI';
+var ticketCurrentStep=1;
+var currentAIText='';
+
+/* Ticket fare config */
+var FARES={single:1.4,return:2.2,day:80};
+
+/* MD alias so ticket functions can reference metroData */
+var MD=null; /* set after metroData defined */
+
+/* ══════════════════════════════════════════
+   SAFE INTERVAL — defined first, called anywhere
+══════════════════════════════════════════ */
+function safeInterval(fn,ms){
+  var id=setInterval(fn,ms);
+  appIntervals.add(id);
+  return id;
+}
+function clearAllIntervals(){
+  appIntervals.forEach(function(id){clearInterval(id);});
+  appIntervals.clear();
+}
+
+/* ══════════════════════════════════════════
+   LOADER TEXT CYCLE
+══════════════════════════════════════════ */
+var loadMsgs=['Initializing sensors...','Connecting to metro network...','Loading AI prediction modules...','Starting live telemetry...','Calibrating crowd analytics...'];
+var li=0;
+safeInterval(function(){
+  var el=document.getElementById('loader-text');
+  if(el){el.textContent=loadMsgs[li%loadMsgs.length];li++;}
+},700);
+
+/* ══════════════════════════════════════════
+   AUTH
+══════════════════════════════════════════ */
+var USERS={'demo@metro.in':'metro123','admin@metro.in':'admin123'};
+
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(function(b,i){b.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register'));});
+  document.getElementById('tab-login').style.display=tab==='login'?'block':'none';
+  document.getElementById('tab-register').style.display=tab==='register'?'block':'none';
+}
+
+function doLogin(){
+  var e=document.getElementById('login-email').value.trim();
+  var p=document.getElementById('login-pass').value;
+  document.getElementById('login-err').textContent='';
+  if(!e||!p){document.getElementById('login-err').textContent='⚠ FIELDS REQUIRED';return;}
+  if(USERS[e]===p){
+    localStorage.setItem('metroUser',e);
+    currentUser=e;
+    var uName=e.split('@')[0];
+    document.getElementById('user-name').textContent='👤 '+uName;
+    document.getElementById('live-user').textContent=uName.toUpperCase();
+    document.getElementById('sidebar-user-name').textContent=uName.toUpperCase();
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='flex';
+    applyTranslation();
+    /* Use a real timeout — rAF fires before layout is calculated */
+    setTimeout(function(){initApp();},80);
+  }else{
+    document.getElementById('login-err').textContent='✕ INVALID CREDENTIALS — ACCESS DENIED';
+  }
+}
+
+function doRegister(){
+  var e=document.getElementById('reg-email').value.trim();
+  var p=document.getElementById('reg-pass').value;
+  document.getElementById('reg-err').textContent='';
+  if(!e||!p){document.getElementById('reg-err').textContent='⚠ FIELDS REQUIRED';return;}
+  if(p.length<6){document.getElementById('reg-err').textContent='⚠ PASSWORD TOO SHORT';return;}
+  USERS[e]=p;
+  document.getElementById('reg-err').style.color='var(--green)';
+  document.getElementById('reg-err').textContent='✓ REGISTERED — PLEASE LOGIN';
+  setTimeout(function(){switchTab('login');},1200);
+}
+
+function doLogout(){
+  localStorage.removeItem('metroUser');
+  clearAllIntervals();
+  if(simInterval){clearInterval(simInterval);simInterval=null;}
+  if(clockInterval){clearInterval(clockInterval);clockInterval=null;}
+  if(map){try{map.remove();}catch(ex){}map=null;}
+  if(chartInstance){try{chartInstance.destroy();}catch(ex){}chartInstance=null;}
+  appInitialized=false;
+  lastStationSpoken='';
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('login-pass').value='';
+}
+
+/* ══════════════════════════════════════════
+   THEME
+══════════════════════════════════════════ */
+function toggleTheme(){
+  isDark=!isDark;
+  document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
+  document.getElementById('theme-btn').textContent=isDark?'☀️':'🌙';
+  if(window.tileLayer&&map){
+    map.removeLayer(window.tileLayer);
+    var url=isDark?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png':'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    window.tileLayer=L.tileLayer(url,{attribution:'© CARTO',maxZoom:18}).addTo(map);
+  }
+  if(chartInstance)rebuildChart();
+}
+
+/* ══════════════════════════════════════════
+   CLOCK
+══════════════════════════════════════════ */
+var DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function pad(n){return String(n).padStart(2,'0');}
+function startClock(){
+  function tick(){
+    var n=new Date();
+    var ct=document.getElementById('clock-time');
+    var cd=document.getElementById('clock-date');
+    var su=document.getElementById('sb-update');
+    if(ct)ct.textContent=pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());
+    if(cd)cd.textContent=DAYS[n.getDay()]+', '+n.getDate()+' '+MONTHS[n.getMonth()]+' '+n.getFullYear();
+    if(su)su.textContent=pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());
+  }
+  tick();
+  clockInterval=safeInterval(tick,1000);
+}
+
+/* ══════════════════════════════════════════
+   SPEECH
+══════════════════════════════════════════ */
+function speak(text){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  text=text.replace(/MGBS/g,'M G B S').replace(/JNTU/g,'J N T U').replace(/KPHB/g,'K P H B');
+  var msg=new SpeechSynthesisUtterance(text);
+  var voices=speechSynthesis.getVoices();
+  if(userLang==='hi'){msg.lang='hi-IN';msg.voice=voices.find(function(v){return v.lang.includes('hi');})||voices[0];}
+  else if(userLang==='te'){msg.lang='te-IN';msg.voice=voices.find(function(v){return v.lang.includes('te');})||voices[0];}
+  else{msg.lang='en-IN';msg.voice=voices.find(function(v){return v.lang.includes('en-IN');})||voices[0];}
+  msg.rate=0.82;msg.pitch=1;msg.volume=1;
+  window.speechSynthesis.speak(msg);
+}
+function pronounceStation(n){return n.replace(/MGBS/g,'M G B S').replace(/JNTU/g,'J N T U').replace(/KPHB/g,'K P H B');}
+function metroAnnounce(station,nextStation){
+  var msg='';
+  if(userLang==='hi')msg='कृपया ध्यान दें। अगला स्टेशन '+pronounceStation(nextStation)+' है।';
+  else if(userLang==='te')msg='దయచేసి గమనించండి. తదుపరి స్టేషన్ '+pronounceStation(nextStation)+'.';
+  else msg='Attention please. Next station is '+pronounceStation(nextStation)+'. Doors will open on the left.';
+  speak(msg);
+}
+
+/* ══════════════════════════════════════════
+   METRO DATA
+══════════════════════════════════════════ */
+var metroData={
+  red:{name:'Red Line',color:'#ef4444',stations:[
+    {name:'Miyapur',lat:17.4968,lng:78.3414,offset:0},
+    {name:'JNTU College',lat:17.4933,lng:78.3500,offset:3},
+    {name:'KPHB Colony',lat:17.4855,lng:78.3888,offset:6},
+    {name:'Kukatpally',lat:17.4835,lng:78.4011,offset:9},
+    {name:'Ameerpet',lat:17.4375,lng:78.4482,offset:18},
+    {name:'MGBS',lat:17.3785,lng:78.4818,offset:26},
+    {name:'LB Nagar',lat:17.3457,lng:78.5485,offset:34}
+  ]},
+  blue:{name:'Blue Line',color:'#38bdf8',stations:[
+    {name:'Raidurg',lat:17.4424,lng:78.3762,offset:0},
+    {name:'Hitech City',lat:17.4435,lng:78.3824,offset:3},
+    {name:'Madhapur',lat:17.4412,lng:78.3965,offset:6},
+    {name:'Jubilee Hills',lat:17.4348,lng:78.4125,offset:10},
+    {name:'Ameerpet',lat:17.4375,lng:78.4482,offset:15},
+    {name:'Begumpet',lat:17.4404,lng:78.4594,offset:18},
+    {name:'Nagole',lat:17.3940,lng:78.5670,offset:30}
+  ]},
+  green:{name:'Green Line',color:'#22c55e',stations:[
+    {name:'JBS Parade Ground',lat:17.4486,lng:78.5005,offset:0},
+    {name:'Secunderabad West',lat:17.4346,lng:78.4981,offset:5},
+    {name:'RTC X Roads',lat:17.4082,lng:78.4925,offset:10},
+    {name:'MGBS',lat:17.3785,lng:78.4818,offset:15}
+  ]}
+};
+
+MD=metroData; /* alias for ticket functions */
+
+function getCrowdLevel(station,hour){
+  var peak=['Ameerpet','MGBS','Hitech City','Nagole','LB Nagar'];
+  var isPeak=(hour>=8&&hour<=10)||(hour>=17&&hour<=20);
+  var isMid=(hour>=11&&hour<=16);
+  if(peak.indexOf(station)>=0)return isPeak?'Heavy':isMid?'Moderate':'Low';
+  return isPeak?'Moderate':'Low';
+}
+function getCrowdNum(level){
+  return level==='Heavy'?Math.floor(200+Math.random()*80):level==='Moderate'?Math.floor(110+Math.random()*80):Math.floor(30+Math.random()*60);
+}
+function setLanguage(lang){userLang=lang;applyTranslation();}
+
+function getTrainPosition(lineKey,shift){
+  shift=shift||0;
+  var line=metroData[lineKey];
+  var now=new Date();
+  var mins=now.getHours()*60+now.getMinutes()+shift;
+  var START=360,DURATION=line.stations[line.stations.length-1].offset,HEADWAY=10;
+  if(mins<START||mins>1380)return{stationIdx:0,direction:'Service Not Started',inService:false};
+  var elapsed=mins-START,pos=elapsed%HEADWAY;
+  var tripMin=Math.round((pos/HEADWAY)*DURATION);
+  var idx=0;
+  for(var i=0;i<line.stations.length-1;i++){
+    if(tripMin>=line.stations[i].offset&&tripMin<line.stations[i+1].offset){idx=i;break;}
+    if(tripMin>=line.stations[line.stations.length-1].offset)idx=line.stations.length-1;
+  }
+  var s0=line.stations[idx],s1=line.stations[Math.min(idx+1,line.stations.length-1)];
+  var frac=0;
+  if(s1!==s0){var seg=s1.offset-s0.offset;frac=seg>0?(tripMin-s0.offset)/seg:0;frac=Math.max(0,Math.min(1,frac));}
+  return{stationIdx:idx,direction:'Eastbound →',inService:true,interpLat:s0.lat+(s1.lat-s0.lat)*frac,interpLng:s0.lng+(s1.lng-s0.lng)*frac};
+}
+
+function getNextDep(offset){
+  var now=new Date();
+  var mins=now.getHours()*60+now.getMinutes();
+  var START=360,HEADWAY=10;
+  if(mins<START)return'--:--';
+  var elapsed=mins-START,next=Math.ceil(elapsed/HEADWAY)*HEADWAY,st=START+next+offset;
+  return pad(Math.floor(st/60)%24)+':'+pad(st%60);
+}
+function getMinutesToDep(offset){
+  var now=new Date();
+  var mins=now.getHours()*60+now.getMinutes();
+  var START=360,HEADWAY=10;
+  if(mins<START)return'--';
+  var elapsed=mins-START,next=Math.ceil(elapsed/HEADWAY)*HEADWAY,st=START+next+offset;
+  var diff=st-elapsed-START;
+  return diff<=0?0:diff;
+}
+
+/* ══════════════════════════════════════════
+   MAP SIZING HELPER
+══════════════════════════════════════════ */
+function sizeMapDiv(){
+  var mapEl=document.getElementById('map');
+  if(!mapEl)return;
+  var wrapper=mapEl.parentElement;
+  /* Try wrapper's own size first */
+  var h=wrapper.offsetHeight;
+  var w=wrapper.offsetWidth;
+  if(h<10){
+    /* Fallback: compute from viewport */
+    var headerH=(document.querySelector('header')||{offsetHeight:46}).offsetHeight||46;
+    var statusH=(document.querySelector('.status-bar')||{offsetHeight:22}).offsetHeight||22;
+    var sideW=(document.querySelector('.sidebar')||{offsetWidth:220}).offsetWidth||220;
+    var rightW=(document.querySelector('.right-panel')||{offsetWidth:320}).offsetWidth||320;
+    h=window.innerHeight-headerH-statusH;
+    w=window.innerWidth-sideW-rightW;
+  }
+  mapEl.style.width=w+'px';
+  mapEl.style.height=h+'px';
+}
+
+/* ══════════════════════════════════════════
+   INIT APP — called once after login layout settles
+══════════════════════════════════════════ */
+function initApp(){
+  if(appInitialized)return;
+  appInitialized=true;
+
+  /* Destroy stale map if any */
+  if(map){try{map.remove();}catch(ex){}map=null;}
+
+  /* Size the map div before Leaflet touches it */
+  sizeMapDiv();
+
+  /* Create Leaflet map */
+  map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([17.44,78.46],12);
+  window.tileLayer=L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {attribution:'© CARTO',maxZoom:18}
+  ).addTo(map);
+
+  /* Staggered invalidateSize calls to handle any async layout */
+  map.invalidateSize();
+  setTimeout(function(){sizeMapDiv();map.invalidateSize();},150);
+  setTimeout(function(){sizeMapDiv();map.invalidateSize();},600);
+
+  /* Boot all subsystems */
+  startClock();
+  initChart();
+  changeLine();
+  startSidebarLiveClock();
+  startAlertsRefresh();
+  startSidebarMetricsUpdate();
+  buildUpcomingDepartures('red');
+  buildTicketStations();
+
+  window.addEventListener('resize',function(){
+    sizeMapDiv();
+    if(map)map.invalidateSize();
+    if(chartInstance)chartInstance.resize();
+  });
+}
+
+/* ══════════════════════════════════════════
+   CHANGE LINE
+══════════════════════════════════════════ */
+function changeLine(){
+  if(!map)return;
+  var sel=document.getElementById('line-select').value;
+  var line=metroData[sel];
+  if(!line)return;
+
+  /* Clear existing layers */
+  if(lineLayer){try{map.removeLayer(lineLayer);}catch(ex){}lineLayer=null;}
+  if(heatLayer){try{map.removeLayer(heatLayer);}catch(ex){}heatLayer=null;}
+  trainMarkers.forEach(function(t){try{map.removeLayer(t);}catch(ex){}});trainMarkers=[];
+  currentMarkers.forEach(function(m){try{map.removeLayer(m);}catch(ex){}});currentMarkers=[];
+
+  /* Clear old sim interval */
+  if(simInterval){clearInterval(simInterval);appIntervals.delete(simInterval);simInterval=null;}
+
+  /* Line colour dot */
+  var colors={red:'#ef4444',blue:'#38bdf8',green:'#22c55e'};
+  var dotEl=document.getElementById('active-line-dot');
+  if(dotEl)dotEl.style.color=colors[sel];
+  var sbLine=document.getElementById('sb-line');
+  if(sbLine)sbLine.textContent=sel.toUpperCase();
+
+  /* Station circle markers */
+  line.stations.forEach(function(s){
+    var m=L.circleMarker([s.lat,s.lng],{radius:6,color:line.color,fillColor:line.color,fillOpacity:0.9,weight:2})
+      .addTo(map).bindTooltip('<b>'+s.name+'</b>',{direction:'top'});
+    currentMarkers.push(m);
+  });
+
+  /* Polyline */
+  var coords=line.stations.map(function(s){return[s.lat,s.lng];});
+  lineLayer=L.polyline(coords,{color:line.color,weight:4,opacity:0.85}).addTo(map);
+  map.fitBounds(lineLayer.getBounds(),{padding:[60,60]});
+
+  /* Train markers — 3 trains staggered across the line */
+  var trainColors=['#00c8ff','#00ff9d','#ffce00'];
+  var trainOffsets=[0,10,20];
+  trainOffsets.forEach(function(offset,ti){
+    var pos=getTrainPosition(sel,offset);
+    var startCoord=pos&&pos.inService?[pos.interpLat,pos.interpLng]:coords[ti%coords.length];
+    var trainIcon=L.divIcon({
+      className:'',
+      html:'<div style="width:26px;height:26px;border-radius:50%;background:'+trainColors[ti]+';display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 0 16px '+trainColors[ti]+',0 0 30px rgba(0,200,255,0.4);animation:pulseTrain 1.5s infinite '+(ti*0.4)+'s;">🚆</div>',
+      iconSize:[26,26],iconAnchor:[13,13]
+    });
+    var marker=L.marker(startCoord,{icon:trainIcon}).addTo(map);
+    marker._trainOffset=offset;
+    trainMarkers.push(marker);
+  });
+
+  /* Right panel line name */
+  var lbEl=document.getElementById('line-badge-rp');
+  if(lbEl){lbEl.textContent=line.name;lbEl.style.color=line.color;}
+
+  /* Initial data */
+  updateHeatmap(sel);
+  updatePosition(sel);
+  buildSchedule(sel);
+  buildUpcomingDepartures(sel);
+
+  /* Live simulation interval */
+  simInterval=safeInterval(function(){
+    if(!map)return;
+    updatePosition(sel);
+    buildSchedule(sel);
+    updateHeatmap(sel);
+    buildUpcomingDepartures(sel);
+    updateSidebarQuickStats();
+  },3000);
+}
+
+/* ══════════════════════════════════════════
+   HEATMAP
+══════════════════════════════════════════ */
+function updateHeatmap(lineKey){
+  if(!map)return;
+  var line=metroData[lineKey];
+  var h=new Date().getHours();
+  var peakStations=['Ameerpet','MGBS','Hitech City','Nagole','LB Nagar','Kukatpally'];
+  var heatData=[];
+  line.stations.forEach(function(s){
+    var level=getCrowdLevel(s.name,h);
+    /* Base intensity: Heavy=0.9, Moderate=0.55, Low=0.2 — add small noise */
+    var intensity=level==='Heavy'?(0.75+Math.random()*0.25):level==='Moderate'?(0.4+Math.random()*0.2):(0.1+Math.random()*0.15);
+    /* Push main point */
+    heatData.push([s.lat,s.lng,intensity]);
+    /* Spread 3 nearby ghost points to make blobs look realistic */
+    for(var k=0;k<3;k++){
+      var dlat=(Math.random()-0.5)*0.012;
+      var dlng=(Math.random()-0.5)*0.012;
+      heatData.push([s.lat+dlat,s.lng+dlng,intensity*0.35]);
+    }
+  });
+  if(heatLayer){try{map.removeLayer(heatLayer);}catch(ex){}heatLayer=null;}
+  if(typeof L.heatLayer==='function'){
+    heatLayer=L.heatLayer(heatData,{
+      radius:35,blur:22,maxZoom:17,max:1.0,
+      gradient:{0.0:'#00ff9d',0.4:'#ffce00',0.7:'#ff8c00',1.0:'#ff3355'}
+    }).addTo(map);
+  }
+}
+
+/* ══════════════════════════════════════════
+   SMOOTH CROWD COUNTER
+══════════════════════════════════════════ */
+function smoothCrowd(newVal){
+  if(smoothIntervalHandle)clearInterval(smoothIntervalHandle);
+  var step=(newVal-lastCrowd)/10,i=0;
+  smoothIntervalHandle=setInterval(function(){
+    lastCrowd+=step;
+    var el=document.getElementById('crowd-num');
+    if(el)el.textContent=Math.floor(lastCrowd);
+    i++;if(i>=10){clearInterval(smoothIntervalHandle);smoothIntervalHandle=null;}
+  },50);
+}
+
+/* ══════════════════════════════════════════
+   SMOOTH TRAIN MOVE
+══════════════════════════════════════════ */
+function smoothMove(marker,lat,lng){
+  if(!marker||!map)return;
+  if(marker.__anim){clearInterval(marker.__anim);marker.__anim=null;}
+  var start=marker.getLatLng(),i=0,steps=20;
+  marker.__anim=setInterval(function(){
+    if(!map){clearInterval(marker.__anim);return;}
+    marker.setLatLng([start.lat+(lat-start.lat)*(i/steps),start.lng+(lng-start.lng)*(i/steps)]);
+    i++;if(i>steps){clearInterval(marker.__anim);marker.__anim=null;}
+  },50);
+}
+
+/* ══════════════════════════════════════════
+   UPDATE POSITION (async)
+══════════════════════════════════════════ */
+function updatePosition(lineKey){
+  var line=metroData[lineKey];
+  var pos=getTrainPosition(lineKey);
+  var now=new Date();
+
+  if(!pos||!pos.inService){
+    var snEl=document.getElementById('station-name');
+    if(snEl)snEl.textContent='Out of Service';
+    return;
+  }
+
+  /* Move all train markers */
+  trainMarkers.forEach(function(tm){
+    var tpos=getTrainPosition(lineKey,tm._trainOffset||0);
+    if(tpos&&tpos.inService)smoothMove(tm,tpos.interpLat,tpos.interpLng);
+  });
+
+  var station=line.stations[pos.stationIdx];
+  var nextSt=line.stations[Math.min(pos.stationIdx+1,line.stations.length-1)];
+
+  /* Simulate crowd data */
+  var levels=['Low','Moderate','Heavy'];
+  var level=levels[Math.floor(Math.random()*3)];
+  var conf=Math.floor(75+Math.random()*20);
+  var crowdNum=level==='Heavy'?Math.floor(200+Math.random()*80):level==='Moderate'?Math.floor(110+Math.random()*80):Math.floor(30+Math.random()*60);
+  var delay=Math.floor(Math.random()*3);
+
+  /* Update UI elements safely */
+  function setEl(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
+  function setW(id,val){var el=document.getElementById(id);if(el)el.style.width=val;}
+  function setAttr(id,attr,val){var el=document.getElementById(id);if(el)el.setAttribute(attr,val);}
+
+  setEl('station-name',station.name);
+  setEl('dir-rp',pos.direction);
+  setEl('nc-station-name',station.name);
+  setEl('next-station-label',nextSt.name);
+  setEl('dist-to-next',(Math.random()*3).toFixed(1)+' km');
+  setEl('crowd-label','CROWD: '+level.toUpperCase());
+  setEl('crowd-num',crowdNum);
+  setEl('cs-avg',crowdNum);
+  setEl('next-dep',getNextDep(station.offset));
+  setEl('delay-display',delay+' min');
+  setEl('sb-delay',delay+' MIN');
+  setEl('sb-crowd',level.toUpperCase());
+  setEl('qs-crowd',crowdNum);
+
+  var crowdClass=level==='Heavy'?'crowd-heavy':level==='Moderate'?'crowd-moderate':'crowd-low';
+  var ctEl=document.getElementById('crowd-tag');
+  if(ctEl)ctEl.className='crowd-tag '+crowdClass;
+
+  smoothCrowd(crowdNum);
+
+  /* Crowd ring (r=28, circ≈176) */
+  var pct=Math.min(crowdNum/300,1);
+  setAttr('crowd-ring-fill','stroke-dashoffset',176-(pct*176));
+  setAttr('crowd-ring-fill','stroke',level==='Heavy'?'#ff3355':level==='Moderate'?'#ffce00':'#00ff9d');
+
+  /* AI ring (r=19, circ≈119) */
+  setAttr('ai-ring-fill','stroke-dashoffset',119-(conf/100)*119);
+  setEl('ai-conf-pct',conf+'%');
+  setEl('ai-conf-badge',conf+'%');
+  setW('sm-ai',conf+'%');
+  setEl('sm-ai-v',conf+'%');
+
+  /* Train positions panel */
+  setEl('tp1-station',station.name);
+  setEl('tp1-next','→ '+nextSt.name);
+  setEl('tp1-dist',(Math.random()*2).toFixed(1)+' km');
+  var lk=document.getElementById('line-select').value;
+  var pos2=getTrainPosition(lk,10);
+  var pos3=getTrainPosition(lk,20);
+  if(pos2&&pos2.inService){
+    var s2=metroData[lk].stations[pos2.stationIdx];
+    var n2=metroData[lk].stations[Math.min(pos2.stationIdx+1,metroData[lk].stations.length-1)];
+    setEl('tp2-station',s2.name);setEl('tp2-next','→ '+n2.name);setEl('tp2-dist',(Math.random()*3).toFixed(1)+' km');
+  }
+  if(pos3&&pos3.inService){
+    var s3=metroData[lk].stations[pos3.stationIdx];
+    var n3=metroData[lk].stations[Math.min(pos3.stationIdx+1,metroData[lk].stations.length-1)];
+    setEl('tp3-station',s3.name);setEl('tp3-next','→ '+n3.name);setEl('tp3-dist',(Math.random()*3).toFixed(1)+' km');
+  }
+
+  /* AI text */
+  var aiMsg=level==='Heavy'?'High crowd at '+station.name+'. Deploy 2 additional trains on '+line.name+'. Estimated relief in 8 min.':
+            level==='Moderate'?'Moderate flow at '+station.name+'. System operating within normal parameters.':
+            'Low density at '+station.name+'. Normal service. Next peak expected 17:30.';
+  typeAI(aiMsg);
+
+  /* Announce station */
+  if(lastStationSpoken!==station.name){metroAnnounce(station.name,nextSt.name);lastStationSpoken=station.name;}
+
+  /* Chart */
+  var label=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+  pushChartData(crowdNum,label);
+}
+
+/* ══════════════════════════════════════════
+   SCHEDULE
+══════════════════════════════════════════ */
+function buildSchedule(lineKey){
+  var tbody=document.getElementById('sched-body');
+  if(!tbody)return;
+  tbody.innerHTML='';
+  var h=new Date().getHours();
+  metroData[lineKey].stations.forEach(function(s,i){
+    var crowd=getCrowdLevel(s.name,h);
+    var dotClass=crowd==='Heavy'?'dot-heavy':crowd==='Moderate'?'dot-mod':'dot-low';
+    var tr=document.createElement('tr');
+    if(i===0)tr.className='now-marker';
+    tr.innerHTML='<td>'+s.name+'</td><td>'+getNextDep(s.offset)+'</td><td><span class="crowd-dot-cell '+dotClass+'"></span></td>';
+    tbody.appendChild(tr);
+  });
+}
+
+/* ══════════════════════════════════════════
+   UPCOMING DEPARTURES
+══════════════════════════════════════════ */
+function buildUpcomingDepartures(lineKey){
+  var line=metroData[lineKey];
+  var list=document.getElementById('dep-list');
+  if(!list)return;
+  list.innerHTML='';
+  line.stations.slice(0,4).forEach(function(s){
+    var mins=getMinutesToDep(s.offset);
+    var el=document.createElement('div');
+    el.className='dep-item';
+    el.innerHTML='<span class="dep-icon">🚆</span><span class="dep-route">'+line.stations[0].name+' → '+s.name+'</span><span class="dep-time">'+getNextDep(s.offset)+'</span><span class="dep-wait">'+mins+' min</span>';
+    list.appendChild(el);
+  });
+}
+
+/* ══════════════════════════════════════════
+   ALERTS
+══════════════════════════════════════════ */
+var alertsData=[
+  {type:'warn',icon:'⚠',text:'High Crowd Alert at Ameerpet',time:'11:48 AM'},
+  {type:'crit',icon:'🚨',text:'Platform Congestion at MGBS',time:'11:38 AM'},
+  {type:'info',icon:'ℹ',text:'Minor Delay on Blue Line',time:'11:28 AM'},
+  {type:'warn',icon:'⚠',text:'Sensor offline at Kukatpally',time:'11:10 AM'},
+  {type:'info',icon:'ℹ',text:'Schedule update: Peak hours extended',time:'10:55 AM'}
+];
+function startAlertsRefresh(){
+  buildAlerts(3);
+  safeInterval(function(){
+    var cnt=2+Math.floor(Math.random()*3);
+    var ac=document.getElementById('alerts-count');if(ac)ac.textContent=cnt;
+    var nba=document.getElementById('nb-alerts');if(nba)nba.textContent=cnt;
+    buildAlerts(cnt);
+  },15000);
+}
+function buildAlerts(count){
+  count=count||3;
+  var list=document.getElementById('alerts-list');
+  if(!list)return;
+  list.innerHTML='';
+  alertsData.slice(0,count).forEach(function(a){
+    var el=document.createElement('div');
+    el.className='alert-item '+a.type;
+    el.innerHTML='<span class="alert-icon">'+a.icon+'</span><div><div class="alert-text">'+a.text+'</div><div class="alert-time">'+a.time+'</div></div>';
+    list.appendChild(el);
+  });
+}
+
+/* ══════════════════════════════════════════
+   SIDEBAR METRICS
+══════════════════════════════════════════ */
+function startSidebarMetricsUpdate(){
+  safeInterval(function(){
+    var net=65+Math.floor(Math.random()*25);
+    var sen=94+Math.floor(Math.random()*6);
+    var acc=93+Math.floor(Math.random()*5);
+    function sw(id,v){var el=document.getElementById(id);if(el)el.style.width=v+'%';}
+    function st(id,v){var el=document.getElementById(id);if(el)el.textContent=v+'%';}
+    sw('ssh-net',net);sw('ssh-sen',sen);sw('ssh-acc',acc);
+    st('ssh-net-val',net);st('ssh-sen-val',sen);st('ssh-acc-val',acc);
+    sw('sm-net',net);sw('sm-sen',sen);sw('sm-acc',acc);
+    st('sm-net-v',net);st('sm-sen-v',sen);st('sm-acc-v',acc);
+  },5000);
+}
+
+function updateSidebarQuickStats(){
+  var trains=18+Math.floor(Math.random()*8);
+  var perf=82+Math.floor(Math.random()*12);
+  function setEl(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+  setEl('qs-trains',trains);setEl('nb-trains',trains);setEl('sb-trains',trains+' ACTIVE');
+  setEl('qs-perf',perf+'%');
+  var paxM=(2.3+Math.random()*0.4).toFixed(2);
+  setEl('tm-pax',paxM+'M');setEl('cs-today',paxM+'M');
+  setEl('tm-runs',280+Math.floor(Math.random()*10));
+}
+
+/* ══════════════════════════════════════════
+   SIDEBAR CLOCK / WEATHER
+══════════════════════════════════════════ */
+function startSidebarLiveClock(){
+  var conditions=['PARTLY CLOUDY','CLEAR SKIES','OVERCAST','LIGHT RAIN'];
+  var temps=[26,27,28,29,30];
+  safeInterval(function(){
+    var wt=document.getElementById('weather-temp');
+    var wi=document.getElementById('weather-info');
+    if(wt)wt.textContent=temps[Math.floor(Math.random()*temps.length)]+'°C';
+    if(wi)wi.textContent='HYDERABAD · '+conditions[Math.floor(Math.random()*conditions.length)];
+  },30000);
+}
+
+/* ══════════════════════════════════════════
+   CHART
+══════════════════════════════════════════ */
+function initChart(){
+  var canvas=document.getElementById('chart');
+  if(!canvas)return;
+  var ctx=canvas.getContext('2d');
+  if(!ctx)return;
+  var now=new Date();
+  chartLabels=[];chartData=[];
+  for(var i=7;i>=0;i--){
+    var t=new Date(now-i*30000);
+    chartLabels.push(pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds()));
+    chartData.push(Math.floor(80+Math.random()*150));
+  }
+  buildChart(ctx);
+}
+function buildChart(ctx){
+  if(chartInstance){try{chartInstance.destroy();}catch(ex){}chartInstance=null;}
+  chartInstance=new Chart(ctx,{
+    type:'line',
+    data:{labels:[...chartLabels],datasets:[{label:'Crowd Flow',data:[...chartData],tension:0.4,fill:true,borderColor:'#00c8ff',backgroundColor:'rgba(0,200,255,0.06)',pointBackgroundColor:'#00c8ff',pointRadius:2,borderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#3a6080',font:{size:8},maxTicksLimit:4},grid:{color:'rgba(0,200,255,0.04)'}},y:{ticks:{color:'#3a6080',font:{size:8}},grid:{color:'rgba(0,200,255,0.04)'}}}}
+  });
+}
+function rebuildChart(){
+  var canvas=document.getElementById('chart');
+  if(!canvas)return;
+  if(chartInstance){try{chartInstance.destroy();}catch(ex){}chartInstance=null;}
+  buildChart(canvas.getContext('2d'));
+}
+function pushChartData(val,label){
+  if(!chartInstance)return;
+  chartLabels.push(label);chartData.push(val);
+  if(chartLabels.length>14){chartLabels.shift();chartData.shift();}
+  chartInstance.data.labels=chartLabels;
+  chartInstance.data.datasets[0].data=chartData;
+  chartInstance.update('none');
+  var mx=Math.max.apply(null,chartData);
+  var cp=document.getElementById('cs-peak');if(cp)cp.textContent=mx;
+  var tp=document.getElementById('tm-peak');if(tp)tp.textContent=mx;
+}
+/* ══ SPEECH ══ */
+/* ══ SPEECH — language-aware, de-duplicated ══ */
+function speak(text){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  text=text.replace(/MGBS/g,'M G B S').replace(/JNTU/g,'J N T U').replace(/KPHB/g,'K P H B');
+  var u=new SpeechSynthesisUtterance(text);
+  var voices=window.speechSynthesis.getVoices();
+  if(userLang==='hi'){
+    u.lang='hi-IN';
+    u.voice=voices.find(function(v){return v.lang.startsWith('hi');})||null;
+  }else if(userLang==='te'){
+    u.lang='te-IN';
+    u.voice=voices.find(function(v){return v.lang.startsWith('te');})||null;
+  }else{
+    u.lang='en-IN';
+    u.voice=voices.find(function(v){return v.lang==='en-IN';})||null;
+  }
+  u.rate=0.82;u.pitch=1;u.volume=1;
+  window.speechSynthesis.speak(u);
+}
+function metroAnnounce(station,nextStation){
+  var n=nextStation.replace(/MGBS/g,'M G B S').replace(/JNTU/g,'J N T U').replace(/KPHB/g,'K P H B');
+  var msg='';
+  if(userLang==='hi'){
+    msg='कृपया ध्यान दें। अगला स्टेशन '+n+' है। दरवाज़े बाईं ओर खुलेंगे।';
+  }else if(userLang==='te'){
+    msg='దయచేసి గమనించండి. తదుపరి స్టేషన్ '+n+'. తలుపులు ఎడమ వైపున తెరుచుకుంటాయి.';
+  }else{
+    msg='Attention please. Next station is '+n+'. Doors will open on the left. Please mind the gap.';
+  }
+  speak(msg);
+}
+function speakAI(){
+  if(!currentAIText)return;
+  var btn=el('ai-speak-btn');
+  if(window.speechSynthesis&&window.speechSynthesis.speaking){
+    window.speechSynthesis.cancel();
+    if(btn)btn.classList.remove('speaking');
+    return;
+  }
+  if(btn)btn.classList.add('speaking');
+  var u=new SpeechSynthesisUtterance(currentAIText.replace(/[●⚠✓]/g,''));
+  u.lang='en-IN';u.rate=.9;u.pitch=1;
+  u.onend=function(){if(btn)btn.classList.remove('speaking');};
+  window.speechSynthesis.speak(u);
+}
+/* ══════════════════════════════════════════
+   AI TYPE EFFECT
+══════════════════════════════════════════ */
+function typeAI(text){
+  currentAIText=text;
+  clearInterval(typeTimer);
+  var el=document.getElementById('ai-text');
+  if(!el)return;
+  el.innerHTML='';var i=0;
+  typeTimer=setInterval(function(){el.innerHTML+=text.charAt(i);i++;if(i>=text.length)clearInterval(typeTimer);},16);
+}
+
+/* ══════════════════════════════════════════
+   EMERGENCY
+══════════════════════════════════════════ */
+function toggleEmergency(){
+  emergencyOn=!emergencyOn;
+  var btn=document.getElementById('emerg-btn');
+  if(btn)btn.classList.toggle('active',emergencyOn);
+  var app=document.getElementById('app');
+  if(app)app.classList.toggle('emergency-overlay',emergencyOn);
+  if(emergencyOn){
+    speak('Emergency mode activated. All trains are slowing down.');
+    typeAI('🚨 EMERGENCY MODE ACTIVATED\nAll trains decelerating.\nSecurity teams alerted.\nPassengers please remain calm.');
+  }
+}
+/* ══════════════════════════════════════════
+   TICKET SYSTEM
+══════════════════════════════════════════ */
+function buildTicketStations(){
+  var from=el('tk-from'),to=el('tk-to');if(!from||!to)return;
+  var all=[];
+  Object.keys(MD).forEach(function(k){MD[k].stations.forEach(function(s){if(all.indexOf(s.name)<0)all.push(s.name);});});
+  all.sort();
+  all.forEach(function(n){
+    var o1=document.createElement('option');o1.value=n;o1.textContent=n;from.appendChild(o1);
+    var o2=document.createElement('option');o2.value=n;o2.textContent=n;to.appendChild(o2);
+  });
+  if(all.length>1){to.selectedIndex=1;}
+  var d=new Date();el('tk-date').value=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+function openTicket(){
+  ticketCurrentStep=1;
+  showStep(1);
+  el('ticket-modal').style.display='flex';
+}
+function closeTicket(){el('ticket-modal').style.display='none';}
+function showStep(n){
+  ticketCurrentStep=n;
+  for(var i=1;i<=4;i++){
+    var sp=document.getElementById('sp'+i),ts=document.getElementById('ts'+i);
+    if(sp){sp.classList.remove('active');if(i===n)sp.classList.add('active');}
+    if(ts){ts.classList.remove('active','done');if(i<n)ts.classList.add('done');else if(i===n)ts.classList.add('active');}
+  }
+}
+function calcDist(from,to){
+  /* Find stations in any line and compute rough distance */
+  var fromS=null,toS=null;
+  Object.keys(MD).forEach(function(k){
+    MD[k].stations.forEach(function(s){
+      if(s.name===from)fromS=s;
+      if(s.name===to)toS=s;
+    });
+  });
+  if(!fromS||!toS)return 5;
+  var R=6371,dLat=(toS.lat-fromS.lat)*Math.PI/180,dLng=(toS.lng-fromS.lng)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(fromS.lat*Math.PI/180)*Math.cos(toS.lat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))*10)/10;
+}
+function ticketStep(n){
+  if(n===2){
+    var from=el('tk-from').value,to=el('tk-to').value;
+    if(from===to){alert('Please select different stations.');return;}
+    var pax=parseInt(el('tk-pax').value);
+    var type=document.querySelector('input[name="tktype"]:checked').value;
+    var dist=calcDist(from,to);
+    var base=10,perKm=FARES[type]||1.4;
+    var fare=type==='day'?FARES.day:Math.max(10,Math.round((base+dist*perKm)*pax));
+    var fp=el('fare-preview');
+    fp.innerHTML='<div class="fare-row"><span class="fare-lbl">From</span><span class="fare-val">'+from+'</span></div>'+
+      '<div class="fare-row"><span class="fare-lbl">To</span><span class="fare-val">'+to+'</span></div>'+
+      '<div class="fare-row"><span class="fare-lbl">Distance</span><span class="fare-val">~'+dist+' km</span></div>'+
+      '<div class="fare-row"><span class="fare-lbl">Passengers</span><span class="fare-val">'+pax+'</span></div>'+
+      '<div class="fare-row"><span class="fare-lbl">Type</span><span class="fare-val">'+type.toUpperCase()+'</span></div>'+
+      '<div class="fare-row"><span class="fare-lbl">TOTAL FARE</span><span class="fare-val">₹ '+fare+'</span></div>';
+  }
+  showStep(n);
+}
+function selectPay(el2,method){
+  document.querySelectorAll('.pay-opt').forEach(function(p){p.classList.remove('selected');});
+  el2.classList.add('selected');
+  selectedPayMethod=method;
+  var pe=el('pay-extra');
+  if(method==='CARD'){
+    pe.innerHTML='<div class="tf-row full" style="margin-top:10px;"><label class="tf-lbl">CARD NUMBER</label><input class="tf-inp" placeholder="•••• •••• •••• ••••" maxlength="19"/></div><div class="tf-row"><div><label class="tf-lbl">EXPIRY</label><input class="tf-inp" placeholder="MM/YY" maxlength="5"/></div><div><label class="tf-lbl">CVV</label><input class="tf-inp" placeholder="•••" maxlength="3" type="password"/></div></div>';
+  }else if(method==='UPI'){
+  pe.innerHTML =
+    '<div class="tf-row full" style="margin-top:10px;">' +
+    '<label class="tf-lbl">UPI ID</label>' +
+    '<input class="tf-inp" placeholder="yourname@upi" value=""/>' +
+    '</div>';
+  }else{
+    pe.innerHTML='<div style="padding:12px;background:rgba(0,230,118,.06);border:1px solid rgba(0,230,118,.2);border-radius:3px;margin-top:10px;font-family:var(--font-mono);font-size:9px;color:var(--green);">Metro Wallet Balance: <b style="font-family:var(--font-orb);font-size:14px;">₹ 342.50</b></div>';
+  }
+}
+function processPayment(){
+  /* Validate payment method selected */
+  if(!selectedPayMethod){alert('Please select a payment method.');return;}
+
+  /* Replace step-3 content with spinner while "processing" */
+  var sp3=document.getElementById('sp3');
+  var originalHTML=sp3.innerHTML;
+  sp3.innerHTML=
+    '<div class="tm-processing">'+
+      '<div class="tm-spinner"></div>'+
+      '<div class="tm-spin-label">PROCESSING PAYMENT...</div>'+
+    '</div>';
+
+  setTimeout(function(){
+    /* Restore step-3 HTML (hidden anyway after showStep(4)) */
+    sp3.innerHTML=originalHTML;
+    /* Re-attach selectPay listeners lost on innerHTML reset */
+    var opts=sp3.querySelectorAll('.pay-opt');
+    opts.forEach(function(o){
+      o.addEventListener('click',function(){selectPay(o,o.querySelector('.pay-name').textContent.trim());});
+    });
+    generateTicket();
+    showStep(4);
+  },1800);
+}
+function generateTicket(){
+  var from=el('tk-from').value,to=el('tk-to').value;
+  var pax=el('tk-pax').value,type=document.querySelector('input[name="tktype"]:checked').value;
+  var date=el('tk-date').value;
+  var dist=calcDist(from,to);
+  var fare=type==='day'?FARES.day:Math.max(10,Math.round((10+dist*(FARES[type]||1.4))*parseInt(pax)));
+  var tnum='HMR-'+Math.random().toString(36).substr(2,8).toUpperCase();
+  var now=new Date();
+
+  /* Determine line */
+  var lineName='Red Line',lineColor='#ef4444';
+  if(from.includes('Nagole')||to.includes('Nagole')||from.includes('Raidurg')||to.includes('Raidurg')||from.includes('Hitech')||to.includes('Hitech')){lineName='Blue Line';lineColor='#38bdf8';}
+  else if(from.includes('JBS')||to.includes('JBS')||from.includes('Secunderabad')||to.includes('Secunderabad')||from.includes('RTC')||to.includes('RTC')){lineName='Green Line';lineColor='#22c55e';}
+
+  /* Random barcode bars */
+  var bars='';
+  for(var i=0;i<44;i++){var bh=6+Math.floor(Math.random()*18);bars+='<span class="tc-bar" style="height:'+bh+'px;opacity:'+(0.4+Math.random()*0.6)+'"></span>';}
+
+  /* QR payload — encode the key ticket details */
+  var qrPayload='HMRL|'+tnum+'|'+from+'|'+to+'|'+pax+'PAX|'+type.toUpperCase()+'|'+date+'|INR'+fare;
+
+  var out=el('ticket-output');
+
+  /* Build ticket HTML — QR canvas injected after, keyed by unique ID */
+  var qrId='qr-'+tnum.replace(/[^A-Z0-9]/g,'');
+  out.innerHTML=
+    '<div class="tc-success-banner"><span>✅</span><span>BOOKING CONFIRMED</span></div>'+
+    '<div class="tc-header">'+
+      '<div>'+
+        '<div class="tc-line" style="color:'+lineColor+'">'+lineName+'</div>'+
+        '<div class="tc-num">TICKET NO: '+tnum+'</div>'+
+        '<div class="tc-num" style="margin-top:2px;">DATE: '+date+' &nbsp;|&nbsp; '+pad(now.getHours())+':'+pad(now.getMinutes())+'</div>'+
+      '</div>'+
+      '<div class="tc-qr-block">'+
+        '<canvas id="'+qrId+'" class="tc-qr-canvas" width="72" height="72"></canvas>'+
+        '<div class="tc-qr-label">SCAN TO VERIFY</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="tc-route">'+
+      '<span class="tc-from">'+from+'</span>'+
+      '<div class="tc-arrow"></div>'+
+      '<span class="tc-to">'+to+'</span>'+
+    '</div>'+
+    '<div class="tc-info-grid">'+
+      '<div class="tc-info-item"><label>PASSENGERS</label><span>'+pax+'</span></div>'+
+      '<div class="tc-info-item"><label>TYPE</label><span>'+type.toUpperCase()+'</span></div>'+
+      '<div class="tc-info-item"><label>FARE</label><span>₹'+fare+'</span></div>'+
+    '</div>'+
+    '<div class="tc-dashed"></div>'+
+    '<div style="font-family:\'Share Tech Mono\',monospace;font-size:8px;color:var(--text-dim);margin-bottom:8px;text-align:center;letter-spacing:2px;">VALID FOR ONE JOURNEY &nbsp;·&nbsp; HYDERABAD METRO RAIL</div>'+
+    '<div class="tc-barcode">'+bars+'</div>'+
+    '<div style="text-align:center;margin-top:8px;font-family:\'Share Tech Mono\',monospace;font-size:7px;color:var(--text-dim);">Payment via '+selectedPayMethod+' &nbsp;·&nbsp; '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds())+'</div>';
+
+  /* Generate real QR code into the canvas */
+  var qrCanvas=document.getElementById(qrId);
+  if(qrCanvas&&typeof QRCode!=='undefined'){
+    QRCode.toCanvas(qrCanvas,qrPayload,{
+      width:72,
+      margin:1,
+      color:{dark:'#000000',light:'#ffffff'}
+    },function(err){
+      if(err){
+        /* Graceful fallback: replace canvas with emoji placeholder */
+        qrCanvas.outerHTML='<div class="tc-qr-block"><span style="font-size:36px;">🎫</span><div class="tc-qr-label">TICKET ISSUED</div></div>';
+      }
+    });
+  }
+}
+function downloadTicket(){
+  var output=document.getElementById('ticket-output');
+  if(!output||!output.innerHTML){return;}
+  /* Build a minimal printable HTML page and trigger browser print-to-PDF */
+  var printWin=window.open('','_blank','width=480,height=700');
+  if(!printWin){alert('Allow popups to download your ticket.');return;}
+  var styles='body{margin:0;padding:24px;background:#04090f;font-family:monospace;}'+
+    '.ticket-card{background:linear-gradient(160deg,rgba(0,30,60,0.95),rgba(0,10,25,0.98));'+
+    'border:1px solid rgba(0,200,255,0.4);border-radius:6px;padding:20px;color:#9fc8e8;}'+
+    '.tc-line{font-family:sans-serif;font-size:12px;font-weight:700;color:#00c8ff;letter-spacing:2px;}'+
+    '.tc-num{font-size:10px;color:#3a6080;margin-top:3px;}'+
+    '.tc-route{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px dashed rgba(0,200,255,0.2);border-bottom:1px dashed rgba(0,200,255,0.2);margin:10px 0;}'+
+    '.tc-from,.tc-to{font-family:sans-serif;font-size:14px;font-weight:700;color:#e8f4ff;}'+
+    '.tc-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;}'+
+    '.tc-info-item{text-align:center;}'+
+    '.tc-info-item label{font-size:8px;color:#3a6080;letter-spacing:2px;display:block;margin-bottom:3px;}'+
+    '.tc-info-item span{font-family:sans-serif;font-size:13px;font-weight:700;color:#00c8ff;}'+
+    '.tc-qr-canvas{border:2px solid rgba(0,200,255,0.4);border-radius:3px;padding:4px;background:#fff;}';
+  printWin.document.write(
+    '<!DOCTYPE html><html><head><title>Metro Ticket</title>'+
+    '<style>'+styles+'</style></head><body>'+
+    '<div class="ticket-card">'+output.innerHTML+'</div>'+
+    '<script>window.onload=function(){window.print();}<\/script>'+
+    '</body></html>'
+  );
+  printWin.document.close();
+}
+
+/* ══════════════════════════════════════════
+   NAV
+══════════════════════════════════════════ */
+function setNav(el){
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  el.classList.add('active');
+}
+
+/* ══════════════════════════════════════════
+   LOADER / BOOT
+══════════════════════════════════════════ */
+function hideLoader(){
+  var loader=document.getElementById('loading');
+  if(!loader)return;
+  loader.style.opacity='0';
+  loader.style.pointerEvents='none';
+  setTimeout(function(){loader.style.display='none';},300);
+}
+
+function bootApplication(){
+  hideLoader();
+  var login=document.getElementById('login-screen');
+  if(login)login.style.display='flex';
+}
+
+window.addEventListener('load',function(){
+  setTimeout(bootApplication,2000);
+});
+
+window.addEventListener('beforeunload',function(){
+  clearAllIntervals();
+  if(chartInstance)try{chartInstance.destroy();}catch(ex){}
+  if(window.speechSynthesis)window.speechSynthesis.cancel();
+  if(map)try{map.remove();}catch(ex){}
+});
+/* ══════════════════════════════════════════
+   TRANSLATION ENGINE v2
+   Supports: English (en) | Hindi (hi) | Telugu (te)
+══════════════════════════════════════════ */
+
+var I18N={
+  en:{
+    /* Sidebar nav */
+    'nav.dashboard':'Dashboard',
+    'nav.live-tracking':'Live Tracking',
+    'nav.station-status':'Station Status',
+    'nav.schedule':'Schedule',
+    'nav.ai-insights':'AI Insights',
+    'nav.analytics':'Analytics',
+    'nav.alerts':'Alerts',
+    'nav.settings':'Settings',
+    /* Header */
+    'header.book-ticket':'🎫 BOOK TICKET',
+    'header.emergency':'⚠ EMERGENCY',
+    'header.active-line':'ACTIVE LINE',
+    /* Right panel section titles */
+    'section.crowd-flow':'CROWD FLOW ANALYTICS',
+    'section.ai-insights':'AI INSIGHTS',
+    'section.live-train':'LIVE TRAIN STATUS',
+    'section.train-pos':'TRAIN POSITIONS',
+    'section.sys-metrics':'SYSTEM METRICS',
+    'section.next-train':'NEXT TRAIN',
+    'section.delay':'CURRENT DELAY',
+    'section.departures':'UPCOMING DEPARTURES',
+    'section.schedule':'STATION SCHEDULE',
+    'section.alerts':'ACTIVE ALERTS',
+    /* Status labels */
+    'status.low':'LOW',
+    'status.moderate':'MODERATE',
+    'status.heavy':'HEAVY',
+    'status.online':'ONLINE',
+    'status.live':'LIVE SYSTEM',
+    /* Ticket modal */
+    'ticket.title':'🎫 BOOK METRO TICKET',
+    'ticket.from':'FROM STATION',
+    'ticket.to':'TO STATION',
+    'ticket.pax':'PASSENGERS',
+    'ticket.date':'DATE',
+    'ticket.type':'TICKET TYPE',
+    'ticket.single':'🎫 SINGLE',
+    'ticket.return':'🔄 RETURN',
+    'ticket.day':'📅 DAY PASS',
+    'ticket.calc':'CALCULATE FARE →',
+    'ticket.pay':'PAY & CONFIRM ✓',
+    'ticket.download':'⬇ DOWNLOAD PDF',
+    'ticket.done':'DONE ✓',
+    'ticket.back':'← BACK',
+    'ticket.proceed':'PROCEED TO PAYMENT →',
+    /* Station names */
+    'station.miyapur':'Miyapur',
+    'station.jntu':'JNTU College',
+    'station.kphb':'KPHB Colony',
+    'station.kukatpally':'Kukatpally',
+    'station.ameerpet':'Ameerpet',
+    'station.mgbs':'MGBS',
+    'station.lb-nagar':'LB Nagar',
+    'station.raidurg':'Raidurg',
+    'station.hitech':'Hitech City',
+    'station.madhapur':'Madhapur',
+    'station.jubilee':'Jubilee Hills',
+    'station.begumpet':'Begumpet',
+    'station.nagole':'Nagole',
+    'station.jbs':'JBS Parade Ground',
+    'station.sec-west':'Secunderabad West',
+    'station.rtc':'RTC X Roads',
+    /* Metrics */
+    'metric.network':'Network Load',
+    'metric.sensor':'Sensor Status',
+    'metric.accuracy':'Data Accuracy',
+    'metric.ai':'AI Confidence',
+    /* Quick stats */
+    'qs.trains':'TOTAL TRAINS',
+    'qs.perf':'ON-TIME PERF',
+    'qs.crowd':'AVG CROWD',
+    'qs.health':'SYS HEALTH',
+    /* Misc */
+    'misc.logout':'LOGOUT',
+    'misc.current-station':'CURRENT STATION',
+    'misc.next-station':'NEXT STATION',
+    'misc.pax-coach':'PAX/COACH',
+    'misc.valid-journey':'VALID FOR ONE JOURNEY · HYDERABAD METRO RAIL',
+    'misc.scan':'SCAN TO VERIFY',
+    'misc.all-systems':'All Systems OK',
+    'misc.ai-monitoring':'AI Monitoring'
+  },
+
+  hi:{
+    'nav.dashboard':'डैशबोर्ड',
+    'nav.live-tracking':'लाइव ट्रैकिंग',
+    'nav.station-status':'स्टेशन स्थिति',
+    'nav.schedule':'समय-सारणी',
+    'nav.ai-insights':'AI विश्लेषण',
+    'nav.analytics':'आँकड़े',
+    'nav.alerts':'अलर्ट',
+    'nav.settings':'सेटिंग्स',
+    'header.book-ticket':'🎫 टिकट बुक करें',
+    'header.emergency':'⚠ आपातकाल',
+    'header.active-line':'सक्रिय लाइन',
+    'section.crowd-flow':'भीड़ प्रवाह विश्लेषण',
+    'section.ai-insights':'AI अंतर्दृष्टि',
+    'section.live-train':'लाइव ट्रेन स्थिति',
+    'section.train-pos':'ट्रेन स्थान',
+    'section.sys-metrics':'सिस्टम मेट्रिक्स',
+    'section.next-train':'अगली ट्रेन',
+    'section.delay':'वर्तमान विलंब',
+    'section.departures':'आगामी प्रस्थान',
+    'section.schedule':'स्टेशन समय-सारणी',
+    'section.alerts':'सक्रिय अलर्ट',
+    'status.low':'कम',
+    'status.moderate':'मध्यम',
+    'status.heavy':'भारी',
+    'status.online':'ऑनलाइन',
+    'status.live':'लाइव सिस्टम',
+    'ticket.title':'🎫 मेट्रो टिकट बुक करें',
+    'ticket.from':'प्रस्थान स्टेशन',
+    'ticket.to':'गंतव्य स्टेशन',
+    'ticket.pax':'यात्री',
+    'ticket.date':'तारीख',
+    'ticket.type':'टिकट प्रकार',
+    'ticket.single':'🎫 एकल',
+    'ticket.return':'🔄 वापसी',
+    'ticket.day':'📅 दिन पास',
+    'ticket.calc':'किराया देखें →',
+    'ticket.pay':'भुगतान करें ✓',
+    'ticket.download':'⬇ PDF डाउनलोड',
+    'ticket.done':'हो गया ✓',
+    'ticket.back':'← वापस',
+    'ticket.proceed':'भुगतान की ओर →',
+    'station.miyapur':'मियापुर',
+    'station.jntu':'JNTU कॉलेज',
+    'station.kphb':'KPHB कॉलोनी',
+    'station.kukatpally':'कुकटपल्ली',
+    'station.ameerpet':'अमीरपेट',
+    'station.mgbs':'MGBS',
+    'station.lb-nagar':'LB नगर',
+    'station.raidurg':'रायदुर्ग',
+    'station.hitech':'हाईटेक सिटी',
+    'station.madhapur':'मधापुर',
+    'station.jubilee':'जुबली हिल्स',
+    'station.begumpet':'बेगमपेट',
+    'station.nagole':'नागोले',
+    'station.jbs':'JBS परेड ग्राउंड',
+    'station.sec-west':'सिकंदराबाद पश्चिम',
+    'station.rtc':'RTC X रोड्स',
+    'metric.network':'नेटवर्क लोड',
+    'metric.sensor':'सेंसर स्थिति',
+    'metric.accuracy':'डेटा सटीकता',
+    'metric.ai':'AI विश्वास',
+    'qs.trains':'कुल ट्रेनें',
+    'qs.perf':'समय पर प्रदर्शन',
+    'qs.crowd':'औसत भीड़',
+    'qs.health':'सिस्टम स्वास्थ्य',
+    'misc.logout':'लॉग आउट',
+    'misc.current-station':'वर्तमान स्टेशन',
+    'misc.next-station':'अगला स्टेशन',
+    'misc.pax-coach':'यात्री/कोच',
+    'misc.valid-journey':'एक यात्रा के लिए मान्य · हैदराबाद मेट्रो',
+    'misc.scan':'सत्यापन हेतु स्कैन करें',
+    'misc.all-systems':'सभी सिस्टम ठीक हैं',
+    'misc.ai-monitoring':'AI निगरानी'
+  },
+
+  te:{
+    'nav.dashboard':'డాష్‌బోర్డ్',
+    'nav.live-tracking':'లైవ్ ట్రాకింగ్',
+    'nav.station-status':'స్టేషన్ స్థితి',
+    'nav.schedule':'షెడ్యూల్',
+    'nav.ai-insights':'AI విశ్లేషణ',
+    'nav.analytics':'విశ్లేషణలు',
+    'nav.alerts':'హెచ్చరికలు',
+    'nav.settings':'సెట్టింగ్‌లు',
+    'header.book-ticket':'🎫 టికెట్ బుక్ చేయండి',
+    'header.emergency':'⚠ అత్యవసరం',
+    'header.active-line':'క్రియాశీల లైన్',
+    'section.crowd-flow':'జనసందోహ విశ్లేషణ',
+    'section.ai-insights':'AI అంతర్దృష్టి',
+    'section.live-train':'లైవ్ రైలు స్థితి',
+    'section.train-pos':'రైలు స్థానాలు',
+    'section.sys-metrics':'సిస్టమ్ మెట్రిక్స్',
+    'section.next-train':'తదుపరి రైలు',
+    'section.delay':'ప్రస్తుత జాప్యం',
+    'section.departures':'రాబోయే బయలుదేరటాలు',
+    'section.schedule':'స్టేషన్ షెడ్యూల్',
+    'section.alerts':'క్రియాశీల హెచ్చరికలు',
+    'status.low':'తక్కువ',
+    'status.moderate':'మధ్యమ',
+    'status.heavy':'అధికం',
+    'status.online':'ఆన్‌లైన్',
+    'status.live':'లైవ్ సిస్టమ్',
+    'ticket.title':'🎫 మెట్రో టికెట్ బుక్ చేయండి',
+    'ticket.from':'బయలుదేరే స్టేషన్',
+    'ticket.to':'గమ్యస్థాన స్టేషన్',
+    'ticket.pax':'ప్రయాణికులు',
+    'ticket.date':'తేదీ',
+    'ticket.type':'టికెట్ రకం',
+    'ticket.single':'🎫 సింగిల్',
+    'ticket.return':'🔄 రిటర్న్',
+    'ticket.day':'📅 డే పాస్',
+    'ticket.calc':'చార్జీ లెక్కించండి →',
+    'ticket.pay':'చెల్లించండి ✓',
+    'ticket.download':'⬇ PDF డౌన్‌లోడ్',
+    'ticket.done':'పూర్తయింది ✓',
+    'ticket.back':'← వెనుకకు',
+    'ticket.proceed':'చెల్లింపుకు వెళ్ళండి →',
+    'station.miyapur':'మియాపూర్',
+    'station.jntu':'JNTU కళాశాల',
+    'station.kphb':'KPHB కాలనీ',
+    'station.kukatpally':'కూకట్‌పల్లి',
+    'station.ameerpet':'అమీర్‌పేట',
+    'station.mgbs':'MGBS',
+    'station.lb-nagar':'LB నగర్',
+    'station.raidurg':'రాయదుర్గం',
+    'station.hitech':'హైటెక్ సిటీ',
+    'station.madhapur':'మాధాపూర్',
+    'station.jubilee':'జూబ్లీ హిల్స్',
+    'station.begumpet':'బేగంపేట',
+    'station.nagole':'నాగోల్',
+    'station.jbs':'JBS పరేడ్ గ్రౌండ్',
+    'station.sec-west':'సికింద్రాబాద్ పశ్చిమ',
+    'station.rtc':'RTC X రోడ్స్',
+    'metric.network':'నెట్‌వర్క్ లోడ్',
+    'metric.sensor':'సెన్సార్ స్థితి',
+    'metric.accuracy':'డేటా ఖచ్చితత్వం',
+    'metric.ai':'AI విశ్వాసం',
+    'qs.trains':'మొత్తం రైళ్ళు',
+    'qs.perf':'సమయానికి రైళ్ళు',
+    'qs.crowd':'సగటు జనసందోహం',
+    'qs.health':'సిస్టమ్ ఆరోగ్యం',
+    'misc.logout':'లాగ్ అవుట్',
+    'misc.current-station':'ప్రస్తుత స్టేషన్',
+    'misc.next-station':'తదుపరి స్టేషన్',
+    'misc.pax-coach':'ప్రయాణికులు/కోచ్',
+    'misc.valid-journey':'ఒక ప్రయాణానికి చెల్లుతుంది · హైదరాబాద్ మెట్రో',
+    'misc.scan':'సరిచూడటానికి స్కాన్ చేయండి',
+    'misc.all-systems':'అన్ని సిస్టమ్‌లు సరిగా ఉన్నాయి',
+    'misc.ai-monitoring':'AI పర్యవేక్షణ'
+  }
+};
+
+/* ── Translation apply engine ── */
+function applyTranslation(){
+  var lang=userLang||'en';
+  var dict=I18N[lang]||I18N['en'];
+
+  /* 1. Elements with data-i18n-key attribute (precise targeting) */
+  document.querySelectorAll('[data-i18n-key]').forEach(function(el){
+    var key=el.getAttribute('data-i18n-key');
+    if(dict[key]!==undefined)el.textContent=dict[key];
+  });
+
+  /* 2. Legacy data-i18n fallback (your existing markup) */
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var raw=el.getAttribute('data-i18n');
+    /* Map legacy raw strings to keys */
+    var legacyMap={
+      'Dashboard':'nav.dashboard',
+      'Live Tracking':'nav.live-tracking',
+      'Station Status':'nav.station-status',
+      'Schedule':'nav.schedule',
+      'AI Insights':'nav.ai-insights',
+      'Analytics':'nav.analytics',
+      'Alerts':'nav.alerts',
+      'Settings':'nav.settings',
+      'LIVE CROWD FLOW':'section.crowd-flow',
+      'AI INSIGHTS':'section.ai-insights',
+      'LIVE TRAIN STATUS':'section.live-train',
+      'TRAIN POSITIONS':'section.train-pos',
+      'SYSTEM METRICS':'section.sys-metrics',
+      'UPCOMING DEPARTURES':'section.departures',
+      'STATION SCHEDULE':'section.schedule',
+      'ACTIVE ALERTS':'section.alerts'
+    };
+    var key=legacyMap[raw];
+    if(key&&dict[key]!==undefined)el.textContent=dict[key];
+  });
+
+  /* 3. Targeted elements by ID */
+  var idMap={
+    'emerg-btn':'header.emergency',
+    'logout-text':'misc.logout'
+  };
+  Object.keys(idMap).forEach(function(id){
+    var el=document.getElementById(id);
+    if(el&&dict[idMap[id]])el.textContent=dict[idMap[id]];
+  });
+
+  /* 4. BOOK TICKET button — find by onclick attribute */
+  document.querySelectorAll('button[onclick="openTicket()"]').forEach(function(btn){
+    if(dict['header.book-ticket'])btn.innerHTML=dict['header.book-ticket'];
+  });
+
+  /* 5. Ticket modal labels (only when modal content exists) */
+  var labelMap={
+    'ticket-modal-title':'ticket.title',
+    'tk-lbl-from':'ticket.from',
+    'tk-lbl-to':'ticket.to',
+    'tk-lbl-pax':'ticket.pax',
+    'tk-lbl-date':'ticket.date',
+    'tk-lbl-type':'ticket.type'
+  };
+  Object.keys(labelMap).forEach(function(id){
+    var el=document.getElementById(id);
+    if(el&&dict[labelMap[id]])el.textContent=dict[labelMap[id]];
+  });
+
+  /* 6. Sidebar live badge */
+  var liveBadge=document.querySelector('.sidebar-live-badge');
+  if(liveBadge){
+    var dotSpan=liveBadge.querySelector('.live-dot');
+    liveBadge.textContent='';
+    if(dotSpan){liveBadge.appendChild(dotSpan);}
+    liveBadge.appendChild(document.createTextNode(' '+dict['status.live']));
+  }
+
+  /* 7. Quick-stat labels */
+  var qsLabelEls=document.querySelectorAll('.qs-label');
+  var qsKeys=['qs.trains','qs.perf','qs.crowd','qs.health'];
+  qsLabelEls.forEach(function(el,i){if(qsKeys[i]&&dict[qsKeys[i]])el.textContent=dict[qsKeys[i]];});
+
+  /* 8. System metric labels */
+  var smEls=document.querySelectorAll('.sm-label');
+  var smKeys=['metric.network','metric.sensor','metric.accuracy','metric.ai'];
+  smEls.forEach(function(el,i){if(smKeys[i]&&dict[smKeys[i]])el.textContent=dict[smKeys[i]];});
+
+  /* 9. Show language-change toast */
+  showLangToast(lang);
+}
+
+function showLangToast(lang){
+  var labels={en:'🇬🇧  English',hi:'🇮🇳  हिन्दी',te:'🏳  తెలుగు'};
+  var toast=document.getElementById('lang-toast');
+  if(!toast)return;
+  toast.textContent='LANGUAGE: '+(labels[lang]||lang.toUpperCase());
+  toast.classList.add('visible');
+  clearTimeout(showLangToast._timer);
+  showLangToast._timer=setTimeout(function(){toast.classList.remove('visible');},2200);
+}
+
+/* Override setLanguage to hook into upgraded engine */
+function setLanguage(lang){
+  userLang=lang;
+  applyTranslation();
+}
+/* ══════════════════════════════════════════
+   UPGRADED TICKET SYSTEM IMPLEMENTATION
+══════════════════════════════════════════ */
+let calculatedFareData = null;
+
+function openTicket() {
+  ticketCurrentStep = 1;
+  document.getElementById('ticket-modal').style.display = 'flex';
+  document.getElementById('tk-date').valueAsDate = new Date();
+  loadTicketStations();
+  ticketStep(1);
+}
+
+function closeTicket() {
+  document.getElementById('ticket-modal').style.display = 'none';
+}
+
+function loadTicketStations() {
+  const currentLine = document.getElementById('line-select').value;
+  fetch(`/api/stations?line=${currentLine}`)
+    .then(res => res.json())
+    .then(data => {
+      const fromSel = document.getElementById('tk-from');
+      const toSel = document.getElementById('tk-to');
+      fromSel.innerHTML = "";
+      toSel.innerHTML = "";
+      
+      data.stations.forEach((st, idx) => {
+        let opt1 = document.createElement('option');
+        opt1.value = st; opt1.textContent = st;
+        let opt2 = document.createElement('option');
+        opt2.value = st; opt2.textContent = st;
+        
+        fromSel.appendChild(opt1);
+        toSel.appendChild(opt2);
+      });
+      
+      if(toSel.options.length > 1) {
+        toSel.selectedIndex = toSel.options.length - 1; // Default to last station
+      }
+    });
+}
+
+function changeLineWithTickets() {
+  // Override regular changeLine to sync dynamic fields
+  if(typeof changeLine === "function") { changeLine(); }
+  if(document.getElementById('ticket-modal').style.display === 'flex') {
+    loadTicketStations();
+  }
+}
+document.getElementById('line-select').onchange = changeLineWithTickets;
+
+function ticketStep(step) {
+  ticketCurrentStep = step;
+  // Update step visual indicators
+  for(let i=1; i<=4; i++) {
+    const stepIndicator = document.getElementById(`ts${i}`);
+    if(i < step) {
+      stepIndicator.className = "tm-step done";
+    } else if(i === step) {
+      stepIndicator.className = "tm-step active";
+    } else {
+      stepIndicator.className = "tm-step";
+    }
+    document.getElementById(`sp${i}`).classList.toggle('active', i === step);
+  }
+
+  if(step === 2) {
+    fetchFareDetails();
+  }
+}
+
+function fetchFareDetails() {
+  const payload = {
+    from_station: document.getElementById('tk-from').value,
+    to_station: document.getElementById('tk-to').value,
+    passengers: document.getElementById('tk-pax').value,
+    ticket_type: document.querySelector('input[name="tktype"]:checked').value,
+    line: document.getElementById('line-select').value
+  };
+
+  const preview = document.getElementById('fare-preview');
+  preview.innerHTML = `<div class="tm-processing"><div class="tm-spinner"></div><div class="tm-spin-label">CALCULATING FARES...</div></div>`;
+
+  fetch('/api/calculate_fare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    calculatedFareData = data;
+    preview.innerHTML = `
+      <div class="fare-row"><span class="fare-lbl">ROUTE</span><span class="fare-val">${data.from_station} ➔ ${data.to_station}</span></div>
+      <div class="fare-row"><span class="fare-lbl">TICKET TYPE</span><span class="fare-val">${data.ticket_type}</span></div>
+      <div class="fare-row"><span class="fare-lbl">PASSENGERS</span><span class="fare-val">${data.passengers} Ticket(s)</span></div>
+      <div class="fare-row"><span class="fare-lbl">BASE FARE (per pax)</span><span class="fare-val">₹${data.fare_per_pax}</span></div>
+      <div class="fare-row"><span class="fare-lbl">SUBTOTAL</span><span class="fare-val">₹${data.subtotal}</span></div>
+      <div class="fare-row"><span class="fare-lbl">CGST (9%)</span><span class="fare-val">₹${data.cgst}</span></div>
+      <div class="fare-row"><span class="fare-lbl">SGST (9%)</span><span class="fare-val">₹${data.sgst}</span></div>
+      <div class="tc-dashed"></div>
+      <div class="fare-row"><span class="fare-lbl">GRAND TOTAL</span><span class="fare-val">₹${data.total}</span></div>
+    `;
+  });
+}
+
+function selectPay(element, method) {
+  selectedPayMethod = method;
+  document.querySelectorAll('.pay-opt').forEach(opt => opt.classList.remove('selected'));
+  element.classList.add('selected');
+}
+
+function processPayment() {
+  const payExtra = document.getElementById('pay-extra');
+  payExtra.innerHTML = `<div class="tm-processing"><div class="tm-spinner"></div><div class="tm-spin-label">AUTHORIZING TRANSACTION via ${selectedPayMethod}...</div></div>`;
+  
+  setTimeout(() => {
+    payExtra.innerHTML = "";
+    generateFinalTicket();
+    ticketStep(4);
+  }, 2000); // Simulated 2 second secure payment window
+}
+
+function generateFinalTicket() {
+  const output = document.getElementById('ticket-output');
+  const tID = "HMRL" + Math.floor(100000 + Math.random() * 900000);
+  const dateStr = document.getElementById('tk-date').value || new Date().toLocaleDateString();
+  
+  output.innerHTML = `
+    <div class="tc-success-banner"><span>✓</span><span>TRANSACTION SUCCESSFUL</span></div>
+    <div class="tc-header">
+      <div>
+        <div class="tc-line">${document.getElementById('line-select').value.toUpperCase()} LINE E-TICKET</div>
+        <div class="tc-num">TICKET ID: ${tID}</div>
+      </div>
+      <div class="tc-qr-block">
+        <canvas id="ticket-qr-canvas" class="tc-qr-canvas"></canvas>
+        <div class="tc-qr-label">SCAN AT GATE</div>
+      </div>
+    </div>
+    <div class="tc-route">
+      <div class="tc-from">${calculatedFareData.from_station}</div>
+      <div class="tc-arrow"></div>
+      <div class="tc-to">${calculatedFareData.to_station}</div>
+    </div>
+    <div class="tc-info-grid">
+      <div class="tc-info-item"><label>TYPE</label><span>${calculatedFareData.ticket_type}</span></div>
+      <div class="tc-info-item"><label>PAX</label><span>${calculatedFareData.passengers}</span></div>
+      <div class="tc-info-item"><label>AMOUNT</label><span style="color:#00ff9d;">₹${calculatedFareData.total}</span></div>
+    </div>
+    <div class="tc-dashed"></div>
+    <div style="font-size:8px; color:var(--text-dim); text-align:center; font-family:'Share Tech Mono', monospace;">
+      VALID FOR DAY OF JOURNEY ONLY: ${dateStr}
+    </div>
+  `;
+
+  // Generate real QR code using the loaded QRCode framework layout
+  setTimeout(() => {
+    QRCode.toCanvas(document.getElementById('ticket-qr-canvas'), tID, {
+      width: 64,
+      margin: 1,
+      color: { dark: "#04090f", light: "#ffffff" }
+    });
+  }, 50);
+}
+
+function downloadTicket() {
+  alert("Downloading system-generated Ticket Blueprint Document (PDF format mock sequence completed).");
+}
+</script>
+</body>
+</html>
